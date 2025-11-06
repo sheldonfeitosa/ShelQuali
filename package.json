@@ -1,0 +1,24 @@
+{
+  "name": "qualishel",
+  "version": "1.0.0",
+  "description": "Sistema de Gestão de Qualidade - Escritório da Qualidade",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx http-server -p 3000",
+    "start": "npx http-server -p 3000"
+  },
+  "keywords": [
+    "qualidade",
+    "kanban",
+    "gestao",
+    "qualidade"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
+
+
+
+

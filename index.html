@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qualishel - Escritório da Qualidade</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Bibliotecas para geração de PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Biblioteca para envio de e-mails -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <!-- Firebase (opcional - descomente após configurar) -->
+    <!--
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // IMPORTANTE: Substitua com suas credenciais do Firebase
+        const firebaseConfig = {
+            apiKey: "SUA_API_KEY",
+            authDomain: "seu-projeto.firebaseapp.com",
+            projectId: "seu-projeto-id",
+            storageBucket: "seu-projeto.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        window.db = db;
+        console.log('✅ Firebase inicializado');
+    </script>
+    -->
+    <!-- Serviço Firebase -->
+    <script src="firebase-service.js"></script>
+</head>
+<body>
+    <!-- Menu Principal -->
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo">
+                <h1>Qualishel</h1>
+                <span class="subtitle">Escritório da Qualidade</span>
+            </div>
+            <nav class="main-nav">
+                <div class="panel-selector">
+                    <select id="panel-selector" class="panel-select">
+                        <option value="">Selecione um painel...</option>
+                    </select>
+                    <button class="btn-secondary" id="new-panel-btn" title="Novo Painel">
+                        <span class="btn-icon">+</span>
+                        Novo Painel
+                    </button>
+                    <button class="btn-secondary" id="manage-panels-btn" title="Gerenciar Painéis">
+                        ⚙️
+                    </button>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="#" class="nav-link active" data-page="kanban">Kanban</a></li>
+                    <li><a href="#" class="nav-link" data-page="dashboard">Dashboard</a></li>
+                    <li><a href="#" class="nav-link" data-page="relatorios">Relatórios</a></li>
+                    <li><a href="#" class="nav-link" data-page="configuracoes">Configurações</a></li>
+                </ul>
+                <button class="btn-logout" id="logout-btn" title="Sair">
+                    🚪 Sair
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="main-content">
+        <!-- Área para Banner de Resumo -->
+        <div id="summary-banner-container" class="summary-banner-container"></div>
+        
+        <!-- Página do Kanban -->
+        <section id="kanban-page" class="page active">
+            <div class="page-header">
+                <h2>Kanban</h2>
+                <button class="btn-primary" id="add-demand-btn">
+                    <span class="btn-icon">+</span>
+                    Nova Demanda
+                </button>
+            </div>
+
+            <!-- Container do Kanban -->
+            <div class="kanban-container">
+                <!-- Coluna: Pendente -->
+                <div class="kanban-column" data-status="pendente">
+                    <div class="column-header">
+                        <h3>Pendente</h3>
+                        <span class="card-count" id="count-pendente">0</span>
+                    </div>
+                    <div class="column-content" id="column-pendente">
+                        <!-- Cards serão adicionados aqui via JS -->
+                    </div>
+                </div>
+
+                <!-- Coluna: Em Andamento -->
+                <div class="kanban-column" data-status="andamento">
+                    <div class="column-header">
+                        <h3>Em Andamento</h3>
+                        <span class="card-count" id="count-andamento">0</span>
+                    </div>
+                    <div class="column-content" id="column-andamento">
+                        <!-- Cards serão adicionados aqui via JS -->
+                    </div>
+                </div>
+
+                <!-- Coluna: Em Revisão -->
+                <div class="kanban-column" data-status="revisao">
+                    <div class="column-header">
+                        <h3>Em Revisão</h3>
+                        <span class="card-count" id="count-revisao">0</span>
+                    </div>
+                    <div class="column-content" id="column-revisao">
+                        <!-- Cards serão adicionados aqui via JS -->
+                    </div>
+                </div>
+
+                <!-- Coluna: Concluído -->
+                <div class="kanban-column" data-status="concluido">
+                    <div class="column-header">
+                        <h3>Concluído</h3>
+                        <span class="card-count" id="count-concluido">0</span>
+                    </div>
+                    <div class="column-content" id="column-concluido">
+                        <!-- Cards serão adicionados aqui via JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página do Dashboard -->
+        <section id="dashboard-page" class="page">
+            <div class="page-header">
+                <h2>Dashboard</h2>
+                <div class="header-actions">
+                    <select id="dashboard-panel-selector" class="panel-select">
+                        <option value="">Todos os Painéis</option>
+                    </select>
+                    <button class="btn-secondary" id="refresh-dashboard-btn">
+                        🔄 Atualizar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filtros do Dashboard -->
+            <div class="report-filters">
+                <div class="filter-group">
+                    <label for="dashboard-date-start">Período - De:</label>
+                    <input type="date" id="dashboard-date-start" class="filter-date-input">
+                </div>
+                <div class="filter-group">
+                    <label for="dashboard-date-end">Até:</label>
+                    <input type="date" id="dashboard-date-end" class="filter-date-input">
+                </div>
+            </div>
+
+            <!-- Cards de Métricas -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-content">
+                        <h3>Total de Demandas</h3>
+                        <p class="metric-value" id="metric-total">0</p>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">⏳</div>
+                    <div class="metric-content">
+                        <h3>Pendentes</h3>
+                        <p class="metric-value" id="metric-pendentes">0</p>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">🚀</div>
+                    <div class="metric-content">
+                        <h3>Em Andamento</h3>
+                        <p class="metric-value" id="metric-andamento">0</p>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">✅</div>
+                    <div class="metric-content">
+                        <h3>Concluídas</h3>
+                        <p class="metric-value" id="metric-concluidas">0</p>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">⚡</div>
+                    <div class="metric-content">
+                        <h3>Urgentes</h3>
+                        <p class="metric-value" id="metric-urgentes">0</p>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-content">
+                        <h3>Taxa de Conclusão</h3>
+                        <p class="metric-value" id="metric-taxa">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráficos -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Distribuição por Status</h3>
+                    <canvas id="status-chart" width="400" height="300"></canvas>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Distribuição por Prioridade</h3>
+                    <canvas id="priority-chart" width="400" height="300"></canvas>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Demandas por Responsável</h3>
+                    <div id="responsible-chart" class="bar-chart"></div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Evolução Temporal</h3>
+                    <canvas id="timeline-chart" width="400" height="300"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico de Gantt -->
+            <div class="gantt-section">
+                <h3>Gráfico de Gantt - Cronograma de Demandas</h3>
+                <div class="gantt-container">
+                    <canvas id="gantt-chart"></canvas>
+                </div>
+                <div class="gantt-legend">
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #2563eb;"></span>
+                        <span>Em Andamento</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #8b5cf6;"></span>
+                        <span>Em Revisão</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #10b981;"></span>
+                        <span>Concluído</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #ef4444;"></span>
+                        <span>Prazo Vencido</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista de Demandas Urgentes -->
+            <div class="urgent-section">
+                <h3>⚠️ Demandas Urgentes</h3>
+                <div id="urgent-list" class="urgent-list"></div>
+            </div>
+        </section>
+
+        <!-- Página de Relatórios -->
+        <section id="relatorios-page" class="page">
+            <div class="page-header">
+                <h2>Relatórios</h2>
+                <div class="header-actions">
+                    <select id="report-panel-selector" class="panel-select">
+                        <option value="">Todos os Painéis</option>
+                    </select>
+                    <div class="report-actions">
+                        <button class="btn-secondary" id="export-pdf-btn">📄 Exportar PDF</button>
+                        <button class="btn-secondary" id="export-report-btn">📥 Exportar CSV</button>
+                        <button class="btn-secondary" id="refresh-report-btn">🔄 Atualizar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="report-filters">
+                <div class="filter-group">
+                    <label for="filter-status">Status:</label>
+                    <select id="filter-status" class="filter-select">
+                        <option value="all">Todos</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="andamento">Em Andamento</option>
+                        <option value="revisao">Em Revisão</option>
+                        <option value="concluido">Concluído</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="filter-priority">Prioridade:</label>
+                    <select id="filter-priority" class="filter-select">
+                        <option value="all">Todas</option>
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                        <option value="urgente">Urgente</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="filter-responsible">Responsável:</label>
+                    <select id="filter-responsible" class="filter-select">
+                        <option value="all">Todos</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="filter-date-start">Período - De:</label>
+                    <input type="date" id="filter-date-start" class="filter-date-input">
+                </div>
+                <div class="filter-group">
+                    <label for="filter-date-end">Até:</label>
+                    <input type="date" id="filter-date-end" class="filter-date-input">
+                </div>
+            </div>
+
+            <!-- Relatório Resumo -->
+            <div class="report-summary">
+                <div class="report-header-info">
+                    <h3>Resumo do Relatório</h3>
+                    <div id="report-period-info" class="report-period-info"></div>
+                    <div id="report-generation-date" class="report-generation-date"></div>
+                </div>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Total de Demandas:</span>
+                        <span class="summary-value" id="report-total">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Média de Tempo:</span>
+                        <span class="summary-value" id="report-avg-time">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Demanda Mais Antiga:</span>
+                        <span class="summary-value" id="report-oldest">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Taxa de Conclusão:</span>
+                        <span class="summary-value" id="report-completion">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabela de Relatório -->
+            <div class="report-table-container">
+                <h3>Detalhamento das Demandas</h3>
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Status</th>
+                            <th>Prioridade</th>
+                            <th>Responsável</th>
+                            <th>Data Criação</th>
+                            <th>Tempo Aberto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-table-body">
+                        <!-- Linhas serão preenchidas via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Gráficos de Relatório -->
+            <div class="report-charts">
+                <div class="chart-card">
+                    <h3>Distribuição por Status (Filtrado)</h3>
+                    <canvas id="report-status-chart" width="400" height="300"></canvas>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Distribuição por Prioridade (Filtrado)</h3>
+                    <canvas id="report-priority-chart" width="400" height="300"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página de Configurações -->
+        <section id="configuracoes-page" class="page">
+            <div class="page-header">
+                <h2>Configurações</h2>
+            </div>
+
+            <!-- Configuração de E-mail -->
+            <div class="settings-section">
+                <div class="settings-header">
+                    <h3>📧 Configuração de E-mail (EmailJS)</h3>
+                    <span class="settings-status" id="email-status">Não configurado</span>
+                </div>
+                
+                <div class="settings-content">
+                    <div class="settings-info">
+                        <p>Configure o EmailJS para enviar convites automáticos por e-mail aos colaboradores. O EmailJS é um serviço gratuito que permite enviar e-mails diretamente do navegador.</p>
+                        <div class="info-box">
+                            <strong>Plano Gratuito:</strong> 200 e-mails por mês
+                        </div>
+                    </div>
+
+                    <!-- Guia Passo a Passo -->
+                    <div class="setup-guide">
+                        <h4>📋 Guia de Configuração Passo a Passo</h4>
+                        <div class="steps-container">
+                            <div class="step-item">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h5>Criar conta no EmailJS</h5>
+                                    <p>Acesse <a href="https://www.emailjs.com/" target="_blank" rel="noopener">www.emailjs.com</a> e crie uma conta gratuita.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="step-item">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h5>Adicionar Serviço de E-mail</h5>
+                                    <p>No painel, vá em "Email Services" e adicione um serviço (Gmail, Outlook, etc.). Copie o <strong>Service ID</strong>.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="step-item">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h5>Criar Template de E-mail</h5>
+                                    <p>Vá em "Email Templates" e crie um novo template. Use as variáveis abaixo:</p>
+                                    <div class="template-vars">
+                                        <code>{{to_name}}</code> - Nome do colaborador<br>
+                                        <code>{{to_email}}</code> - E-mail do colaborador<br>
+                                        <code>{{demand_title}}</code> - Título da demanda<br>
+                                        <code>{{demand_description}}</code> - Descrição<br>
+                                        <code>{{demand_status}}</code> - Status<br>
+                                        <code>{{demand_priority}}</code> - Prioridade<br>
+                                        <code>{{demand_responsible}}</code> - Responsável<br>
+                                        <code>{{panel_name}}</code> - <strong>Nome do painel/projeto</strong> ⭐<br>
+                                        <code>{{message}}</code> - Mensagem personalizada<br>
+                                        <code>{{access_link}}</code> - Link direto para acessar a demanda (inclui panelId)<br>
+                                        <code>{{site_url}}</code> - URL do site Qualishel
+                                    </div>
+                                    <div class="template-example" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid #2563eb;">
+                                        <strong>📧 Exemplo de Template de E-mail:</strong>
+                                        <div style="margin-top: 0.75rem; font-size: 0.875rem; line-height: 1.6;">
+                                            <p><strong>Olá {{to_name}},</strong></p>
+                                            <p>{{message}}</p>
+                                            <p><strong>Painel:</strong> {{panel_name}}</p>
+                                            <p><strong>Demanda:</strong> {{demand_title}}</p>
+                                            <p><strong>Status:</strong> {{demand_status}} | <strong>Prioridade:</strong> {{demand_priority}}</p>
+                                            <p><strong>Responsável:</strong> {{demand_responsible}}</p>
+                                            <p style="margin-top: 1rem;">
+                                                <a href="{{access_link}}" style="background: #2563eb; color: white; padding: 0.75rem 1.5rem; text-decoration: none; border-radius: 6px; display: inline-block;">
+                                                    Acessar Qualishel →
+                                                </a>
+                                            </p>
+                                            <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #64748b;">
+                                                Ou copie e cole este link: {{access_link}}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p>Copie o <strong>Template ID</strong>.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="step-item">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <h5>Obter Public Key</h5>
+                                    <p>Vá em "Account" → "General" e copie o <strong>Public Key (User ID)</strong>.</p>
+                                </div>
+                            </div>
+                            
+                            <div class="step-item">
+                                <div class="step-number">5</div>
+                                <div class="step-content">
+                                    <h5>Preencher os campos abaixo</h5>
+                                    <p>Cole os valores copiados nos campos correspondentes e salve.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Formulário de Configuração -->
+                    <div class="email-config-form">
+                        <h4>⚙️ Configuração</h4>
+                        <div class="form-group">
+                            <label for="settings-emailjs-public-key">
+                                Public Key (User ID)
+                                <span class="required">*</span>
+                            </label>
+                            <input type="text" id="settings-emailjs-public-key" placeholder="Ex: xxxxxxxxxxxxxxxx" class="settings-input">
+                            <small class="form-help">Encontrado em: Account → General → Public Key</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="settings-emailjs-service-id">
+                                Service ID
+                                <span class="required">*</span>
+                            </label>
+                            <input type="text" id="settings-emailjs-service-id" placeholder="Ex: service_xxxxx" class="settings-input">
+                            <small class="form-help">Encontrado em: Email Services → Seu serviço → Service ID</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="settings-emailjs-template-id">
+                                Template ID
+                                <span class="required">*</span>
+                            </label>
+                            <input type="text" id="settings-emailjs-template-id" placeholder="Ex: template_xxxxx" class="settings-input">
+                            <small class="form-help">Encontrado em: Email Templates → Seu template → Template ID</small>
+                        </div>
+
+                        <div class="settings-actions">
+                            <button type="button" class="btn-primary" id="settings-save-email-config-btn">
+                                💾 Salvar Configuração
+                            </button>
+                            <button type="button" class="btn-secondary" id="test-email-btn">
+                                ✉️ Testar Envio de E-mail
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuração de Usuário -->
+            <div class="settings-section">
+                <div class="settings-header">
+                    <h3>👤 Configuração de Usuário</h3>
+                </div>
+                
+                <div class="settings-content">
+                    <div class="form-group">
+                        <label for="user-name">
+                            Seu Nome
+                        </label>
+                        <input type="text" id="user-name" placeholder="Seu nome aparecerá nas mensagens do chat" class="settings-input">
+                        <small class="form-help">Este nome será usado nas mensagens do chat e notificações</small>
+                    </div>
+                    
+                    <div class="settings-actions">
+                        <button type="button" class="btn-primary" id="save-user-name-btn">
+                            💾 Salvar Nome
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal para Nova Demanda -->
+    <div id="demand-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nova Demanda</h3>
+                <button class="modal-close" id="close-modal">&times;</button>
+            </div>
+            <form id="demand-form">
+                <div class="form-group">
+                    <label for="demand-title">Título da Demanda</label>
+                    <input type="text" id="demand-title" required placeholder="Ex: Revisar procedimento de qualidade">
+                </div>
+                <div class="form-group">
+                    <label for="demand-description">Descrição</label>
+                    <textarea id="demand-description" rows="4" placeholder="Descreva os detalhes da demanda..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="demand-priority">Prioridade</label>
+                    <select id="demand-priority">
+                        <option value="baixa">Baixa</option>
+                        <option value="media" selected>Média</option>
+                        <option value="alta">Alta</option>
+                        <option value="urgente">Urgente</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="demand-responsible">Responsável</label>
+                    <input type="text" id="demand-responsible" placeholder="Nome do responsável">
+                </div>
+                <div class="form-group">
+                    <label for="demand-status">Status Inicial</label>
+                    <select id="demand-status">
+                        <option value="pendente" selected>Pendente</option>
+                        <option value="andamento">Em Andamento</option>
+                        <option value="revisao">Em Revisão</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancel-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary">Criar Demanda</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Prazo de Entrega -->
+    <div id="deadline-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="deadline-modal-title">Definir Prazo de Entrega</h3>
+                <button class="modal-close" id="close-deadline-modal">&times;</button>
+            </div>
+            <form id="deadline-form">
+                <div class="form-group">
+                    <label for="deadline-start-date">Data de Início da Demanda <span class="required">*</span></label>
+                    <input type="date" id="deadline-start-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="deadline-date">Data de Entrega <span class="required">*</span></label>
+                    <input type="date" id="deadline-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="deadline-time">Hora (opcional)</label>
+                    <input type="time" id="deadline-time">
+                </div>
+                <div class="form-group">
+                    <label for="deadline-reason">Justificativa da Mudança <span class="required">*</span></label>
+                    <div id="deadline-context-info" class="deadline-context-info"></div>
+                    <textarea id="deadline-reason" rows="4" required placeholder="Explique o motivo da alteração do prazo..."></textarea>
+                    <small class="form-help">Este campo é obrigatório para garantir rastreabilidade das mudanças de prazo.</small>
+                </div>
+                <div id="deadline-history-section" class="deadline-history-section" style="display: none;">
+                    <h4>Histórico de Alterações de Prazo</h4>
+                    <div id="deadline-history-list" class="deadline-history-list"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancel-deadline-btn">Cancelar</button>
+                    <button type="submit" class="btn-primary">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Colaboradores -->
+    <div id="collaborators-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Gerenciar Colaboradores</h3>
+                <button class="modal-close" id="close-collaborators-modal">&times;</button>
+            </div>
+            <div class="modal-body-collaborators">
+                <div class="collaborator-section">
+                    <h4>Colaboradores Atuais</h4>
+                    <div id="current-collaborators-list" class="collaborators-list">
+                        <!-- Lista de colaboradores será preenchida aqui -->
+                    </div>
+                </div>
+                
+                <div class="collaborator-section">
+                    <h4>Adicionar Novo Colaborador</h4>
+                    <div class="add-collaborator-form">
+                        <div class="form-group-inline">
+                            <input type="text" id="new-collaborator-name" placeholder="Nome do colaborador" class="collaborator-input">
+                            <input type="email" id="new-collaborator-email" placeholder="E-mail (opcional)" class="collaborator-input">
+                            <button type="button" class="btn-primary" id="add-collaborator-btn">➕ Adicionar</button>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="send-email-invite" checked>
+                                <span>Enviar convite por e-mail</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collaborator-section">
+                    <h4>Pessoas Disponíveis</h4>
+                    <div id="available-people-list" class="collaborators-list">
+                        <!-- Lista de pessoas disponíveis será preenchida aqui -->
+                    </div>
+                </div>
+
+                <div class="collaborator-section email-config-section">
+                    <details>
+                        <summary>⚙️ Configurações de E-mail (EmailJS)</summary>
+                        <div class="email-config-content">
+                            <p class="config-info">Para enviar convites por e-mail, você precisa configurar o EmailJS. É gratuito e fácil de configurar.</p>
+                            <div class="form-group">
+                                <label for="emailjs-public-key">Public Key (User ID)</label>
+                                <input type="text" id="emailjs-public-key" placeholder="Ex: xxxxxxxxxxxxxxxx" class="collaborator-input">
+                            </div>
+                            <div class="form-group">
+                                <label for="emailjs-service-id">Service ID</label>
+                                <input type="text" id="emailjs-service-id" placeholder="Ex: service_xxxxx" class="collaborator-input">
+                            </div>
+                            <div class="form-group">
+                                <label for="emailjs-template-id">Template ID</label>
+                                <input type="text" id="emailjs-template-id" placeholder="Ex: template_xxxxx" class="collaborator-input">
+                            </div>
+                            <button type="button" class="btn-secondary" id="save-email-config-btn">Salvar Configuração</button>
+                            <p class="config-help">
+                                <a href="https://www.emailjs.com/docs/getting-started/quick-start/" target="_blank" rel="noopener">
+                                    📖 Como configurar o EmailJS (abre em nova aba)
+                                </a>
+                            </p>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancel-collaborators-btn">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Tarefas e Chat -->
+    <div id="tasks-chat-modal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="tasks-chat-title">Tarefas e Chat</h3>
+                <button class="modal-close" id="close-tasks-chat-modal">&times;</button>
+            </div>
+            <div class="tasks-chat-container">
+                <!-- Aba de Tarefas -->
+                <div class="tasks-chat-tabs">
+                    <button class="tab-btn active" data-tab="tasks">📋 Tarefas</button>
+                    <button class="tab-btn" data-tab="chat">💬 Chat</button>
+                </div>
+
+                <!-- Conteúdo de Tarefas -->
+                <div id="tasks-tab" class="tab-content active">
+                    <div class="tasks-section">
+                        <div class="progress-bar-container">
+                            <div class="progress-info">
+                                <span>Progresso</span>
+                                <span id="progress-percentage">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="add-task-form">
+                            <input type="text" id="new-task-input" placeholder="Adicionar nova tarefa..." class="task-input">
+                            <button class="btn-primary" id="add-task-btn">➕ Adicionar</button>
+                        </div>
+
+                        <div id="tasks-list" class="tasks-list">
+                            <!-- Lista de tarefas será preenchida aqui -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Conteúdo de Chat -->
+                <div id="chat-tab" class="tab-content">
+                    <div class="chat-section">
+                        <div id="chat-messages" class="chat-messages">
+                            <!-- Mensagens serão preenchidas aqui -->
+                        </div>
+                        <div class="chat-input-container">
+                            <input type="text" id="chat-message-input" placeholder="Digite sua mensagem..." class="chat-input">
+                            <button class="btn-primary" id="send-chat-btn">Enviar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Painéis -->
+    <div id="panels-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Gerenciar Painéis</h2>
+                <button class="modal-close" id="close-panels-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="panels-list" id="panels-list">
+                    <!-- Lista de painéis será preenchida aqui -->
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-primary" id="create-panel-btn">
+                        <span class="btn-icon">+</span>
+                        Criar Novo Painel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Criar/Editar Painel -->
+    <div id="panel-form-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="panel-form-title">Novo Painel</h2>
+                <button class="modal-close" id="close-panel-form-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="panel-form">
+                    <div class="form-group">
+                        <label for="panel-name">Nome do Painel <span class="required">*</span></label>
+                        <input type="text" id="panel-name" name="name" required placeholder="Ex: Projeto Alpha, Cliente XYZ">
+                    </div>
+                    <div class="form-group">
+                        <label for="panel-description">Descrição (opcional)</label>
+                        <textarea id="panel-description" name="description" rows="3" placeholder="Descreva o objetivo deste painel..."></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-secondary" id="cancel-panel-form-btn">Cancelar</button>
+                        <button type="submit" class="btn-primary">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    
+    <footer class="main-footer">
+        <p>Desenvolvido por <strong>Sheldon Feitosa</strong></p>
+    </footer>
+</body>
+</html>
+

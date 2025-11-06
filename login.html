@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qualishel - Login</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+        }
+
+        .login-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .login-box {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 3rem;
+            width: 100%;
+            max-width: 420px;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .login-header h1 {
+            color: #2563eb;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .login-header .subtitle {
+            color: #64748b;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            color: var(--text-primary);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            padding: 0.875rem 1rem;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: var(--transition);
+            background: #ffffff;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .login-btn {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            color: #ffffff;
+            border: none;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-top: 0.5rem;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .error-message {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 0.875rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .footer {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            text-align: center;
+            color: #ffffff;
+            font-size: 0.9rem;
+        }
+
+        .footer p {
+            margin: 0;
+        }
+
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 2rem 1.5rem;
+            }
+
+            .login-header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>Qualishel</h1>
+                <span class="subtitle">Escritório da Qualidade</span>
+            </div>
+            
+            <form id="login-form" class="login-form">
+                <div id="error-message" class="error-message"></div>
+                
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required 
+                        autocomplete="username"
+                        placeholder="Digite seu usuário"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required 
+                        autocomplete="current-password"
+                        placeholder="Digite sua senha"
+                    >
+                </div>
+                
+                <button type="submit" class="login-btn">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Desenvolvido por <strong>Sheldon Feitosa</strong></p>
+    </footer>
+
+    <script>
+        // Sistema de autenticação simples
+        const loginForm = document.getElementById('login-form');
+        const errorMessage = document.getElementById('error-message');
+
+        // Verificar se já está autenticado
+        if (localStorage.getItem('qualishel_authenticated') === 'true') {
+            window.location.href = 'index.html';
+        }
+
+        // Usuários padrão (em produção, isso deve ser substituído por autenticação real)
+        const defaultUsers = [
+            { username: 'admin', password: 'admin123' },
+            { username: 'qualishel', password: 'qualishel123' }
+        ];
+
+        // Carregar usuários do localStorage ou usar os padrão
+        let users = JSON.parse(localStorage.getItem('qualishel_users') || JSON.stringify(defaultUsers));
+
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            // Validar credenciais
+            const user = users.find(u => u.username === username && u.password === password);
+
+            if (user) {
+                // Autenticação bem-sucedida
+                localStorage.setItem('qualishel_authenticated', 'true');
+                localStorage.setItem('qualishel_current_user', username);
+                
+                // Redirecionar para a aplicação
+                window.location.href = 'index.html';
+            } else {
+                // Mostrar erro
+                errorMessage.textContent = 'Usuário ou senha incorretos. Tente novamente.';
+                errorMessage.classList.add('show');
+                
+                // Limpar campos
+                document.getElementById('password').value = '';
+                
+                // Remover erro após 5 segundos
+                setTimeout(() => {
+                    errorMessage.classList.remove('show');
+                }, 5000);
+            }
+        });
+
+        // Permitir login com Enter
+        document.getElementById('password').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loginForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>
+
+
