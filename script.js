@@ -71,6 +71,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         await loadPanels();
         await loadDemands();
+        // Corrigir cards sem panelId válido após carregar painéis
+        fixCardsWithoutPanelId();
         renderPanelSelector();
         setupEventListeners();
         renderKanban();
@@ -1104,28 +1106,93 @@ window.deletePanel = function(panelId) {
     renderPanelsList();
 };
 
+// Função para corrigir cards sem panelId válido
+function fixCardsWithoutPanelId() {
+    if (panels.length === 0) {
+        return; // Não há painéis disponíveis ainda
+    }
+    
+    let needsSave = false;
+    const defaultPanelId = currentPanelId || panels[0].id;
+    
+    demands.forEach(demand => {
+        if (!demand.panelId || !panels.find(p => p.id === demand.panelId)) {
+            demand.panelId = defaultPanelId;
+            needsSave = true;
+            console.log(`✅ Card "${demand.title}" corrigido - atribuído ao painel ${demand.panelId}`);
+        }
+    });
+    
+    if (needsSave) {
+        saveDemands();
+    }
+}
+
 // Persistência de Painéis
 function savePanels() {
+    // Sempre salvar no localStorage primeiro (rápido)
     localStorage.setItem('qualishel-panels', JSON.stringify(panels));
     localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
     localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+    
+    // Tentar salvar no Firebase em background (se disponível)
+    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+        window.firebaseService.savePanelsToStorage(panels, panelIdCounter, currentPanelId).catch(err => {
+            console.warn('Erro ao sincronizar painéis com Firebase:', err);
+        });
+    }
 }
 
 async function loadPanels() {
-    const saved = localStorage.getItem('qualishel-panels');
-    const counter = localStorage.getItem('qualishel-panel-counter');
-    const currentPanel = localStorage.getItem('qualishel-current-panel');
+    let savedData = { panels: [], counter: 1, currentPanelId: null };
     
-    if (saved) {
-        panels = JSON.parse(saved);
+    // Tentar carregar do Firebase primeiro, se disponível
+    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+        try {
+            savedData = await window.firebaseService.loadPanelsFromStorage();
+            console.log('✅ Painéis carregados do Firebase');
+        } catch (error) {
+            console.warn('Erro ao carregar painéis do Firebase, usando localStorage:', error);
+            // Fallback para localStorage
+            const saved = localStorage.getItem('qualishel-panels');
+            const counter = localStorage.getItem('qualishel-panel-counter');
+            const currentPanel = localStorage.getItem('qualishel-current-panel');
+            
+            if (saved) {
+                savedData.panels = JSON.parse(saved);
+            }
+            
+            if (counter) {
+                savedData.counter = parseInt(counter);
+            }
+            
+            if (currentPanel) {
+                savedData.currentPanelId = parseInt(currentPanel);
+            }
+        }
+    } else {
+        // Usar localStorage
+        const saved = localStorage.getItem('qualishel-panels');
+        const counter = localStorage.getItem('qualishel-panel-counter');
+        const currentPanel = localStorage.getItem('qualishel-current-panel');
+        
+        if (saved) {
+            savedData.panels = JSON.parse(saved);
+        }
+        
+        if (counter) {
+            savedData.counter = parseInt(counter);
+        }
+        
+        if (currentPanel) {
+            savedData.currentPanelId = parseInt(currentPanel);
+        }
     }
     
-    if (counter) {
-        panelIdCounter = parseInt(counter);
-    }
-    
-    if (currentPanel) {
-        currentPanelId = parseInt(currentPanel);
+    panels = savedData.panels;
+    panelIdCounter = savedData.counter;
+    if (savedData.currentPanelId) {
+        currentPanelId = savedData.currentPanelId;
     }
     
     // Se não houver painéis, criar um padrão
@@ -1241,6 +1308,7 @@ async function loadDemands() {
     demandIdCounter = savedData.counter;
     
     // Garantir que todos os chats sejam preservados e nunca apagados
+    // E garantir que todos os cards tenham um panelId válido
     demands.forEach(demand => {
         // Se a demanda não tem chat, inicializar como array vazio
         if (!demand.chat) {
@@ -1268,6 +1336,20 @@ async function loadDemands() {
             demand.deadlineHistory = demand.deadlineHistory.filter(entry => 
                 entry && entry.timestamp && entry.reason && entry.author
             );
+        }
+        
+        // Garantir que todos os cards tenham um panelId válido
+        // Se não tiver panelId ou o painel não existir, atribuir ao primeiro painel disponível
+        if (!demand.panelId || !panels.find(p => p.id === demand.panelId)) {
+            // Aguardar painéis serem carregados se ainda não foram
+            if (panels.length > 0) {
+                // Atribuir ao painel atual ou ao primeiro painel disponível
+                demand.panelId = currentPanelId || panels[0].id;
+                console.log(`⚠️ Card "${demand.title}" sem panelId válido. Atribuído ao painel ${demand.panelId}`);
+            } else {
+                // Se ainda não há painéis, será corrigido quando os painéis forem carregados
+                console.warn(`⚠️ Card "${demand.title}" sem panelId e sem painéis disponíveis ainda.`);
+            }
         }
     });
     

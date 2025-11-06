@@ -203,6 +203,85 @@ function loadConfigFromLocalStorage() {
     };
 }
 
+// Salvar painéis
+async function savePanelsToStorage(panels, counter, currentPanelId) {
+    if (firebaseInitialized && db) {
+        try {
+            const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            await setDoc(doc(db, 'system', 'panels'), {
+                panels: panels,
+                counter: counter,
+                currentPanelId: currentPanelId || null,
+                lastUpdate: new Date().toISOString()
+            });
+            console.log('✅ Painéis salvos no Firebase');
+            return true;
+        } catch (error) {
+            console.error('Erro ao salvar painéis no Firebase:', error);
+            // Fallback para localStorage
+            return savePanelsToLocalStorage(panels, counter, currentPanelId);
+        }
+    } else {
+        return savePanelsToLocalStorage(panels, counter, currentPanelId);
+    }
+}
+
+// Carregar painéis
+async function loadPanelsFromStorage() {
+    if (firebaseInitialized && db) {
+        try {
+            const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            const docSnap = await getDoc(doc(db, 'system', 'panels'));
+            
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                console.log('✅ Painéis carregados do Firebase');
+                return {
+                    panels: data.panels || [],
+                    counter: data.counter || 1,
+                    currentPanelId: data.currentPanelId || null
+                };
+            }
+            return { panels: [], counter: 1, currentPanelId: null };
+        } catch (error) {
+            console.error('Erro ao carregar painéis do Firebase:', error);
+            // Fallback para localStorage
+            return loadPanelsFromLocalStorage();
+        }
+    } else {
+        return loadPanelsFromLocalStorage();
+    }
+}
+
+// Funções de fallback para localStorage (painéis)
+function savePanelsToLocalStorage(panels, counter, currentPanelId) {
+    try {
+        localStorage.setItem('qualishel-panels', JSON.stringify(panels));
+        localStorage.setItem('qualishel-panel-counter', counter.toString());
+        localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+        return true;
+    } catch (error) {
+        console.error('Erro ao salvar painéis no localStorage:', error);
+        return false;
+    }
+}
+
+function loadPanelsFromLocalStorage() {
+    try {
+        const saved = localStorage.getItem('qualishel-panels');
+        const counter = localStorage.getItem('qualishel-panel-counter');
+        const currentPanel = localStorage.getItem('qualishel-current-panel');
+        return {
+            panels: saved ? JSON.parse(saved) : [],
+            counter: counter ? parseInt(counter) : 1,
+            currentPanelId: currentPanel ? parseInt(currentPanel) : null
+        };
+    } catch (error) {
+        console.error('Erro ao carregar painéis do localStorage:', error);
+        return { panels: [], counter: 1, currentPanelId: null };
+    }
+}
+
 // Inicializar quando a página carregar
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
@@ -220,10 +299,13 @@ if (typeof window !== 'undefined') {
         loadPeopleFromStorage,
         saveConfigToStorage,
         loadConfigFromStorage,
+        savePanelsToStorage,
+        loadPanelsFromStorage,
         checkFirebaseAvailable,
         isInitialized: () => firebaseInitialized
     };
 }
+
 
 
 
