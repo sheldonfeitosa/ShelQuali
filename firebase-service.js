@@ -282,6 +282,139 @@ function loadPanelsFromLocalStorage() {
     }
 }
 
+// Listeners em tempo real para sincronização automática
+let unsubscribeDemands = null;
+let unsubscribePanels = null;
+let unsubscribePeople = null;
+
+// Configurar listener em tempo real para demandas
+async function setupRealtimeDemandsListener(callback) {
+    if (firebaseInitialized && db) {
+        try {
+            // Remover listener anterior se existir
+            if (unsubscribeDemands) {
+                unsubscribeDemands();
+            }
+            
+            const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            
+            unsubscribeDemands = onSnapshot(
+                doc(db, 'system', 'demands'),
+                (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('🔄 Demandas atualizadas em tempo real');
+                        if (callback) {
+                            callback({
+                                demands: data.demands || [],
+                                counter: data.counter || 1
+                            });
+                        }
+                    }
+                },
+                (error) => {
+                    console.error('Erro no listener de demandas:', error);
+                }
+            );
+            return true;
+        } catch (error) {
+            console.error('Erro ao configurar listener de demandas:', error);
+            return false;
+        }
+    }
+    return false;
+}
+
+// Configurar listener em tempo real para painéis
+async function setupRealtimePanelsListener(callback) {
+    if (firebaseInitialized && db) {
+        try {
+            // Remover listener anterior se existir
+            if (unsubscribePanels) {
+                unsubscribePanels();
+            }
+            
+            const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            
+            unsubscribePanels = onSnapshot(
+                doc(db, 'system', 'panels'),
+                (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('🔄 Painéis atualizados em tempo real');
+                        if (callback) {
+                            callback({
+                                panels: data.panels || [],
+                                counter: data.counter || 1,
+                                currentPanelId: data.currentPanelId || null
+                            });
+                        }
+                    }
+                },
+                (error) => {
+                    console.error('Erro no listener de painéis:', error);
+                }
+            );
+            return true;
+        } catch (error) {
+            console.error('Erro ao configurar listener de painéis:', error);
+            return false;
+        }
+    }
+    return false;
+}
+
+// Configurar listener em tempo real para pessoas
+async function setupRealtimePeopleListener(callback) {
+    if (firebaseInitialized && db) {
+        try {
+            // Remover listener anterior se existir
+            if (unsubscribePeople) {
+                unsubscribePeople();
+            }
+            
+            const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+            
+            unsubscribePeople = onSnapshot(
+                doc(db, 'system', 'people'),
+                (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('🔄 Pessoas atualizadas em tempo real');
+                        if (callback) {
+                            callback(data.people || []);
+                        }
+                    }
+                },
+                (error) => {
+                    console.error('Erro no listener de pessoas:', error);
+                }
+            );
+            return true;
+        } catch (error) {
+            console.error('Erro ao configurar listener de pessoas:', error);
+            return false;
+        }
+    }
+    return false;
+}
+
+// Remover todos os listeners
+function removeAllListeners() {
+    if (unsubscribeDemands) {
+        unsubscribeDemands();
+        unsubscribeDemands = null;
+    }
+    if (unsubscribePanels) {
+        unsubscribePanels();
+        unsubscribePanels = null;
+    }
+    if (unsubscribePeople) {
+        unsubscribePeople();
+        unsubscribePeople = null;
+    }
+}
+
 // Inicializar quando a página carregar
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
@@ -301,6 +434,10 @@ if (typeof window !== 'undefined') {
         loadConfigFromStorage,
         savePanelsToStorage,
         loadPanelsFromStorage,
+        setupRealtimeDemandsListener,
+        setupRealtimePanelsListener,
+        setupRealtimePeopleListener,
+        removeAllListeners,
         checkFirebaseAvailable,
         isInitialized: () => firebaseInitialized
     };

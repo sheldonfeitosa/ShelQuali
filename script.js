@@ -5,6 +5,7 @@ let panelIdCounter = 1; // Contador de IDs para painéis
 let demands = [];
 let demandIdCounter = 1;
 let availablePeople = []; // Lista de pessoas disponíveis para colaboração
+let isUpdatingFromRealtime = false; // Flag para evitar loops na sincronização
 
 // Elementos DOM
 const addDemandBtn = document.getElementById('add-demand-btn');
@@ -80,6 +81,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupReportListeners();
         loadEmailConfig();
         initializeEmailJS();
+        
+        // Configurar listeners em tempo real para sincronização automática
+        setupRealtimeSync();
         
         // Se for um convite, mostrar mensagem e focar na demanda
         if (isInvite && demandId) {
@@ -1105,6 +1109,100 @@ window.deletePanel = function(panelId) {
     updateCardCounts();
     renderPanelsList();
 };
+
+// Configurar sincronização em tempo real com Firebase
+async function setupRealtimeSync() {
+    if (typeof window.firebaseService === 'undefined' || !window.firebaseService.isInitialized()) {
+        console.log('ℹ️ Firebase não inicializado. Sincronização em tempo real desabilitada.');
+        return;
+    }
+    
+    // Listener para demandas (cards)
+    await window.firebaseService.setupRealtimeDemandsListener((data) => {
+        // Evitar atualizar se estivermos salvando localmente (prevenir loop)
+        if (isUpdatingFromRealtime) {
+            return;
+        }
+        
+        // Evitar atualizar se for a própria mudança (prevenir loop)
+        const currentDemandsStr = JSON.stringify(demands);
+        const newDemandsStr = JSON.stringify(data.demands);
+        
+        if (currentDemandsStr !== newDemandsStr) {
+            console.log('🔄 Atualizando demandas em tempo real...');
+            isUpdatingFromRealtime = true;
+            
+            demands = data.demands;
+            demandIdCounter = data.counter;
+            
+            // Preservar chats e histórico ao atualizar
+            demands.forEach(demand => {
+                if (!demand.chat) demand.chat = [];
+                if (!demand.deadlineHistory) demand.deadlineHistory = [];
+            });
+            
+            // Atualizar interface
+            renderKanban();
+            updateCardCounts();
+            updateDashboard();
+            
+            // Salvar no localStorage também
+            localStorage.setItem('qualishel-demands', JSON.stringify(demands));
+            localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
+            
+            isUpdatingFromRealtime = false;
+        }
+    });
+    
+    // Listener para painéis
+    await window.firebaseService.setupRealtimePanelsListener((data) => {
+        // Evitar atualizar se estivermos salvando localmente (prevenir loop)
+        if (isUpdatingFromRealtime) {
+            return;
+        }
+        
+        const currentPanelsStr = JSON.stringify(panels);
+        const newPanelsStr = JSON.stringify(data.panels);
+        
+        if (currentPanelsStr !== newPanelsStr) {
+            console.log('🔄 Atualizando painéis em tempo real...');
+            isUpdatingFromRealtime = true;
+            
+            panels = data.panels;
+            panelIdCounter = data.counter;
+            
+            // Atualizar painel atual se mudou
+            if (data.currentPanelId && data.currentPanelId !== currentPanelId) {
+                currentPanelId = data.currentPanelId;
+            }
+            
+            // Atualizar interface
+            renderPanelSelector();
+            renderKanban();
+            updateCardCounts();
+            
+            // Salvar no localStorage também
+            localStorage.setItem('qualishel-panels', JSON.stringify(panels));
+            localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
+            localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+            
+            isUpdatingFromRealtime = false;
+        }
+    });
+    
+    // Listener para pessoas
+    await window.firebaseService.setupRealtimePeopleListener((people) => {
+        const currentPeopleStr = JSON.stringify(availablePeople);
+        const newPeopleStr = JSON.stringify(people);
+        
+        if (currentPeopleStr !== newPeopleStr) {
+            console.log('🔄 Atualizando pessoas em tempo real...');
+            availablePeople = people;
+        }
+    });
+    
+    console.log('✅ Sincronização em tempo real configurada');
+}
 
 // Função para corrigir cards sem panelId válido
 function fixCardsWithoutPanelId() {
