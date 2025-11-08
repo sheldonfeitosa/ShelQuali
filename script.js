@@ -34,6 +34,30 @@ let panelSelector, newPanelBtn, managePanelsBtn, panelsModal, closePanelsModalBt
 let panelFormModal, closePanelFormModalBtn, panelForm, cancelPanelFormBtn, createPanelBtn;
 let currentPanelForEdit = null; // Armazena o ID do painel sendo editado
 
+// Registrar Service Worker para PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('✅ Service Worker registrado com sucesso:', registration.scope);
+        
+        // Verificar atualizações periodicamente
+        setInterval(() => {
+          registration.update();
+        }, 60000); // A cada 1 minuto
+      })
+      .catch((error) => {
+        console.log('❌ Erro ao registrar Service Worker:', error);
+      });
+  });
+}
+
+// Detectar se está rodando como PWA
+if (window.matchMedia('(display-mode: standalone)').matches) {
+  console.log('📱 Aplicação rodando como PWA');
+  document.body.classList.add('pwa-mode');
+}
+
 // Inicialização
 document.addEventListener('DOMContentLoaded', async () => {
     // Verificar se é um convite (link com parâmetros)
@@ -83,24 +107,93 @@ document.addEventListener('DOMContentLoaded', async () => {
         initializeEmailJS();
         
         // Configurar listeners em tempo real para sincronização automática
-        setupRealtimeSync();
+        // Aguardar um pouco para garantir que Firebase está pronto
+        setTimeout(async () => {
+            // Tentar configurar sincronização, se falhar, tentar novamente
+            let retries = 0;
+            const maxRetries = 5;
+            
+            const trySetupSync = async () => {
+                // Verificar se Firebase está disponível
+                if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                    await setupRealtimeSync();
+                    console.log('✅ Sincronização em tempo real configurada com sucesso');
+                } else if (retries < maxRetries) {
+                    retries++;
+                    // Só mostrar mensagem a cada 2 tentativas para não poluir o console
+                    if (retries % 2 === 0) {
+                        console.log(`Tentando configurar sincronização... (tentativa ${retries}/${maxRetries})`);
+                    }
+                    setTimeout(trySetupSync, 1000);
+                } else {
+                    // Verificar se Firebase está configurado mas não inicializado
+                    if (typeof window.db === 'undefined') {
+                        console.info('ℹ️ Firebase não configurado. Usando localStorage apenas. Para sincronização, configure o Firebase.');
+                    } else {
+                        console.warn('⚠️ Firebase configurado mas não inicializado. Verifique a configuração.');
+                    }
+                }
+            };
+            
+            await trySetupSync();
+        }, 1000);
+        
+        // Reconectar listeners quando a página ganha foco novamente
+        document.addEventListener('visibilitychange', async () => {
+            if (!document.hidden && typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                console.log('🔄 Página visível novamente - verificando sincronização...');
+                // Aguardar um pouco antes de reconectar para evitar reconexões desnecessárias
+                setTimeout(async () => {
+                    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                        await setupRealtimeSync();
+                        console.log('✅ Sincronização reconectada após página ganhar foco');
+                    }
+                }, 500);
+            }
+        });
+        
+        // Reconectar quando a janela ganha foco (útil para tablets/desktop)
+        window.addEventListener('focus', async () => {
+            if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                console.log('🔄 Janela ganhou foco - verificando sincronização...');
+                setTimeout(async () => {
+                    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                        await setupRealtimeSync();
+                        console.log('✅ Sincronização reconectada após janela ganhar foco');
+                    }
+                }, 500);
+            }
+        });
         
         // Se for um convite, mostrar mensagem e focar na demanda
+        // Aguardar um pouco mais para garantir que dados foram carregados
         if (isInvite && demandId) {
             const invitePanelId = panelIdParam ? parseInt(panelIdParam) : null;
-            handleInviteAccess(parseInt(demandId), invitePanelId);
+            // Aguardar mais tempo para garantir que Firebase carregou
+            setTimeout(() => {
+                handleInviteAccess(parseInt(demandId), invitePanelId);
+            }, 800);
         }
     }, 100);
 });
 
 // Função para lidar com acesso via convite
-function handleInviteAccess(demandId, panelId = null) {
+function handleInviteAccess(demandId, panelId = null, retryCount = 0) {
+    const maxRetries = 10; // Tentar até 10 vezes (5 segundos)
+    
     const demand = demands.find(d => d.id === demandId);
     
     if (!demand) {
-        // Demanda não encontrada - pode ainda estar carregando
-        setTimeout(() => handleInviteAccess(demandId, panelId), 500);
-        return;
+        // Demanda não encontrada - pode ainda estar carregando do Firebase
+        if (retryCount < maxRetries) {
+            console.log(`Aguardando demanda ${demandId} carregar... (tentativa ${retryCount + 1}/${maxRetries})`);
+            setTimeout(() => handleInviteAccess(demandId, panelId, retryCount + 1), 500);
+            return;
+        } else {
+            console.error(`Demanda ${demandId} não encontrada após ${maxRetries} tentativas`);
+            alert('Demanda não encontrada. Verifique se o link está correto ou se você tem acesso.');
+            return;
+        }
     }
     
     // Selecionar o painel correto - priorizar panelId do link, depois panelId da demanda
@@ -400,6 +493,10 @@ function switchPage(pageName) {
     if (pageName === 'dashboard') {
         updateDashboard();
     } else if (pageName === 'relatorios') {
+        // Garantir que seletores de painéis estejam atualizados
+        renderReportPanelSelector();
+        renderPanelCheckboxes();
+        // Atualizar relatórios
         updateReports();
     } else if (pageName === 'configuracoes') {
         loadSettingsPage();
@@ -915,6 +1012,10 @@ function renderPanelSelector() {
     // Atualizar também os seletores do dashboard e relatório
     renderDashboardPanelSelector();
     renderReportPanelSelector();
+    // Atualizar checkboxes se estiverem visíveis
+    if (document.getElementById('panel-multiple-selector-container')?.style.display !== 'none') {
+        renderPanelCheckboxes();
+    }
 }
 
 function renderDashboardPanelSelector() {
@@ -935,7 +1036,7 @@ function renderReportPanelSelector() {
     const reportSelector = document.getElementById('report-panel-selector');
     if (!reportSelector) return;
     
-    reportSelector.innerHTML = '<option value="">Todos os Painéis</option>';
+    reportSelector.innerHTML = '<option value="">Selecione um painel</option>';
     
     panels.forEach(panel => {
         const option = document.createElement('option');
@@ -943,6 +1044,57 @@ function renderReportPanelSelector() {
         option.textContent = panel.name;
         reportSelector.appendChild(option);
     });
+    
+    // Renderizar checkboxes para múltiplos painéis
+    renderPanelCheckboxes();
+}
+
+function renderPanelCheckboxes() {
+    const checkboxesContainer = document.getElementById('panel-checkboxes');
+    if (!checkboxesContainer) return;
+    
+    checkboxesContainer.innerHTML = '';
+    
+    if (panels.length === 0) {
+        checkboxesContainer.innerHTML = '<p class="no-panels-message">Nenhum painel disponível</p>';
+        return;
+    }
+    
+    panels.forEach(panel => {
+        const demandCount = demands.filter(d => d.panelId === panel.id).length;
+        const checkboxWrapper = document.createElement('div');
+        checkboxWrapper.className = 'panel-checkbox-item';
+        checkboxWrapper.innerHTML = `
+            <label class="checkbox-label">
+                <input type="checkbox" value="${panel.id}" class="panel-checkbox">
+                <span class="checkbox-custom"></span>
+                <span class="checkbox-text">
+                    <strong>${escapeHtml(panel.name)}</strong>
+                    <small>${demandCount} demanda(s)</small>
+                </span>
+            </label>
+        `;
+        checkboxesContainer.appendChild(checkboxWrapper);
+    });
+}
+
+function handlePanelSelectionModeChange() {
+    const mode = document.querySelector('input[name="panel-selection-mode"]:checked')?.value || 'all';
+    const singleContainer = document.getElementById('panel-selector-container');
+    const multipleContainer = document.getElementById('panel-multiple-selector-container');
+    
+    if (mode === 'all') {
+        if (singleContainer) singleContainer.style.display = 'none';
+        if (multipleContainer) multipleContainer.style.display = 'none';
+    } else if (mode === 'single') {
+        if (singleContainer) singleContainer.style.display = 'block';
+        if (multipleContainer) multipleContainer.style.display = 'none';
+    } else if (mode === 'multiple') {
+        if (singleContainer) singleContainer.style.display = 'none';
+        if (multipleContainer) multipleContainer.style.display = 'block';
+        // Garantir que checkboxes estão renderizados
+        renderPanelCheckboxes();
+    }
 }
 
 function handlePanelChange(e) {
@@ -1110,6 +1262,26 @@ window.deletePanel = function(panelId) {
     renderPanelsList();
 };
 
+// Função auxiliar para comparar arrays de objetos de forma robusta
+function arraysEqual(arr1, arr2) {
+    if (arr1.length !== arr2.length) return false;
+    
+    // Normalizar arrays ordenando por ID para comparação
+    const normalize = (arr) => {
+        return arr.map(item => {
+            const normalized = { ...item };
+            // Remover campos temporários que podem causar diferenças
+            delete normalized._temp;
+            return normalized;
+        }).sort((a, b) => (a.id || 0) - (b.id || 0));
+    };
+    
+    const norm1 = normalize(arr1);
+    const norm2 = normalize(arr2);
+    
+    return JSON.stringify(norm1) === JSON.stringify(norm2);
+}
+
 // Configurar sincronização em tempo real com Firebase
 async function setupRealtimeSync() {
     if (typeof window.firebaseService === 'undefined' || !window.firebaseService.isInitialized()) {
@@ -1117,89 +1289,140 @@ async function setupRealtimeSync() {
         return;
     }
     
-    // Listener para demandas (cards)
-    await window.firebaseService.setupRealtimeDemandsListener((data) => {
-        // Evitar atualizar se estivermos salvando localmente (prevenir loop)
-        if (isUpdatingFromRealtime) {
-            return;
-        }
-        
-        // Evitar atualizar se for a própria mudança (prevenir loop)
-        const currentDemandsStr = JSON.stringify(demands);
-        const newDemandsStr = JSON.stringify(data.demands);
-        
-        if (currentDemandsStr !== newDemandsStr) {
-            console.log('🔄 Atualizando demandas em tempo real...');
-            isUpdatingFromRealtime = true;
-            
-            demands = data.demands;
-            demandIdCounter = data.counter;
-            
-            // Preservar chats e histórico ao atualizar
-            demands.forEach(demand => {
-                if (!demand.chat) demand.chat = [];
-                if (!demand.deadlineHistory) demand.deadlineHistory = [];
-            });
-            
-            // Atualizar interface
-            renderKanban();
-            updateCardCounts();
-            updateDashboard();
-            
-            // Salvar no localStorage também
-            localStorage.setItem('qualishel-demands', JSON.stringify(demands));
-            localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
-            
-            isUpdatingFromRealtime = false;
-        }
-    });
+    console.log('🔄 Configurando sincronização em tempo real...');
     
-    // Listener para painéis
-    await window.firebaseService.setupRealtimePanelsListener((data) => {
-        // Evitar atualizar se estivermos salvando localmente (prevenir loop)
-        if (isUpdatingFromRealtime) {
-            return;
-        }
-        
-        const currentPanelsStr = JSON.stringify(panels);
-        const newPanelsStr = JSON.stringify(data.panels);
-        
-        if (currentPanelsStr !== newPanelsStr) {
-            console.log('🔄 Atualizando painéis em tempo real...');
-            isUpdatingFromRealtime = true;
-            
-            panels = data.panels;
-            panelIdCounter = data.counter;
-            
-            // Atualizar painel atual se mudou
-            if (data.currentPanelId && data.currentPanelId !== currentPanelId) {
-                currentPanelId = data.currentPanelId;
+    // Listener para demandas (cards)
+    try {
+        await window.firebaseService.setupRealtimeDemandsListener((data) => {
+            // Evitar atualizar se estivermos salvando localmente (prevenir loop)
+            if (isUpdatingFromRealtime) {
+                console.log('ℹ️ Ignorando atualização de demandas - sincronização em andamento');
+                return;
             }
             
-            // Atualizar interface
-            renderPanelSelector();
-            renderKanban();
-            updateCardCounts();
+            // Usar comparação robusta de arrays
+            const hasChanged = !arraysEqual(demands, data.demands) || demandIdCounter !== data.counter;
             
-            // Salvar no localStorage também
-            localStorage.setItem('qualishel-panels', JSON.stringify(panels));
-            localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
-            localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+            if (hasChanged) {
+                console.log('🔄 Atualizando demandas em tempo real...', {
+                    antes: demands.length,
+                    depois: data.demands.length,
+                    counterAntes: demandIdCounter,
+                    counterDepois: data.counter,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Marcar flag ANTES de atualizar
+                isUpdatingFromRealtime = true;
+                
+                // Atualizar dados
+                demands = data.demands || [];
+                demandIdCounter = data.counter || 1;
+                
+                // Preservar chats e histórico ao atualizar
+                demands.forEach(demand => {
+                    if (!demand.chat) demand.chat = [];
+                    if (!demand.deadlineHistory) demand.deadlineHistory = [];
+                });
+                
+                // Atualizar interface
+                renderKanban();
+                updateCardCounts();
+                updateDashboard();
+                
+                // Salvar no localStorage também (mas não salvar no Firebase para evitar loop)
+                localStorage.setItem('qualishel-demands', JSON.stringify(demands));
+                localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
+                
+                // Resetar flag DEPOIS de um pequeno delay para garantir que tudo foi processado
+                setTimeout(() => {
+                    isUpdatingFromRealtime = false;
+                    console.log('✅ Flag de sincronização resetada para demandas');
+                }, 200);
+            } else {
+                console.log('ℹ️ Dados de demandas não mudaram, ignorando atualização');
+            }
+        });
+        console.log('✅ Listener de demandas configurado');
+    } catch (error) {
+        console.error('Erro ao configurar listener de demandas:', error);
+    }
+    
+    // Listener para painéis
+    try {
+        await window.firebaseService.setupRealtimePanelsListener((data) => {
+            // Evitar atualizar se estivermos salvando localmente (prevenir loop)
+            if (isUpdatingFromRealtime) {
+                console.log('ℹ️ Ignorando atualização de painéis - sincronização em andamento');
+                return;
+            }
             
-            isUpdatingFromRealtime = false;
-        }
-    });
+            // Usar comparação robusta de arrays
+            const hasChanged = !arraysEqual(panels, data.panels) || 
+                              panelIdCounter !== data.counter ||
+                              currentPanelId !== data.currentPanelId;
+            
+            if (hasChanged) {
+                console.log('🔄 Atualizando painéis em tempo real...', {
+                    antes: panels.length,
+                    depois: data.panels.length,
+                    counterAntes: panelIdCounter,
+                    counterDepois: data.counter,
+                    currentPanelAntes: currentPanelId,
+                    currentPanelDepois: data.currentPanelId
+                });
+                
+                isUpdatingFromRealtime = true;
+                
+                panels = data.panels || [];
+                panelIdCounter = data.counter || 1;
+                
+                // Atualizar painel atual se mudou
+                if (data.currentPanelId !== undefined && data.currentPanelId !== currentPanelId) {
+                    currentPanelId = data.currentPanelId;
+                }
+                
+                // Atualizar interface
+                renderPanelSelector();
+                renderKanban();
+                updateCardCounts();
+                
+                // Salvar no localStorage também
+                localStorage.setItem('qualishel-panels', JSON.stringify(panels));
+                localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
+                localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+                
+                // Resetar flag DEPOIS de um pequeno delay (igual ao de demandas)
+                setTimeout(() => {
+                    isUpdatingFromRealtime = false;
+                    console.log('✅ Flag de sincronização resetada para painéis');
+                }, 200);
+            } else {
+                console.log('ℹ️ Dados de painéis não mudaram, ignorando atualização');
+            }
+        });
+        console.log('✅ Listener de painéis configurado');
+    } catch (error) {
+        console.error('Erro ao configurar listener de painéis:', error);
+    }
     
     // Listener para pessoas
-    await window.firebaseService.setupRealtimePeopleListener((people) => {
-        const currentPeopleStr = JSON.stringify(availablePeople);
-        const newPeopleStr = JSON.stringify(people);
-        
-        if (currentPeopleStr !== newPeopleStr) {
-            console.log('🔄 Atualizando pessoas em tempo real...');
-            availablePeople = people;
-        }
-    });
+    try {
+        await window.firebaseService.setupRealtimePeopleListener((people) => {
+            const hasChanged = !arraysEqual(availablePeople, people);
+            
+            if (hasChanged) {
+                console.log('🔄 Atualizando pessoas em tempo real...', {
+                    antes: availablePeople.length,
+                    depois: people.length
+                });
+                availablePeople = people || [];
+            }
+        });
+        console.log('✅ Listener de pessoas configurado');
+    } catch (error) {
+        console.error('Erro ao configurar listener de pessoas:', error);
+    }
     
     console.log('✅ Sincronização em tempo real configurada');
 }
@@ -1228,6 +1451,16 @@ function fixCardsWithoutPanelId() {
 
 // Persistência de Painéis
 function savePanels() {
+    // Se estiver atualizando de sincronização em tempo real, não salvar no Firebase (evitar loop)
+    if (isUpdatingFromRealtime) {
+        console.log('ℹ️ Ignorando savePanels - atualização em tempo real em andamento');
+        // Ainda salvar no localStorage para consistência local
+        localStorage.setItem('qualishel-panels', JSON.stringify(panels));
+        localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
+        localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+        return;
+    }
+    
     // Sempre salvar no localStorage primeiro (rápido)
     localStorage.setItem('qualishel-panels', JSON.stringify(panels));
     localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
@@ -1309,6 +1542,12 @@ async function loadPanels() {
 
 // Persistência (Firebase ou LocalStorage)
 function saveDemands() {
+    // Se estiver atualizando de sincronização em tempo real, não salvar no Firebase (evitar loop)
+    if (isUpdatingFromRealtime) {
+        console.log('ℹ️ Ignorando saveDemands - atualização em tempo real em andamento');
+        return;
+    }
+    
     // Garantir que o chat nunca seja perdido - preservar todos os chats existentes
     demands.forEach(demand => {
         // Se a demanda não tem chat, inicializar como array vazio
@@ -2182,8 +2421,21 @@ async function sendInviteEmail(collaboratorName, collaboratorEmail, demand) {
         const panelName = panel ? panel.name : 'Painel Principal';
         
         // Obter URL do site (para o link de acesso)
-        // Usar a URL atual sem o arquivo, garantindo que funcione em qualquer ambiente
+        // Tentar usar URL de produção se disponível, senão usar URL atual
         let siteUrl = window.location.origin;
+        
+        // Se estiver em localhost, tentar detectar URL de produção do localStorage ou usar uma padrão
+        if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1')) {
+            // Tentar obter URL de produção salva
+            const savedProductionUrl = localStorage.getItem('qualishel-production-url');
+            if (savedProductionUrl) {
+                siteUrl = savedProductionUrl;
+            } else {
+                // Se não tiver salva, usar a URL atual mesmo (para desenvolvimento)
+                console.warn('⚠️ Usando URL local. Configure a URL de produção nas configurações.');
+            }
+        }
+        
         const pathname = window.location.pathname;
         // Se estiver em um subdiretório, manter o caminho base
         if (pathname && pathname !== '/' && pathname !== '/index.html') {
@@ -2197,7 +2449,11 @@ async function sendInviteEmail(collaboratorName, collaboratorEmail, demand) {
         const validPanelId = panelId || demand.panelId || currentPanelId;
         
         // Incluir panelId no link para garantir acesso ao painel correto
+        // Remover barra dupla se houver
+        siteUrl = siteUrl.replace(/\/+/g, '/').replace(/\/$/, '');
         const accessLink = `${siteUrl}/index.html?demand=${demand.id}&panel=${validPanelId}&invite=true`;
+        
+        console.log('📧 Link de convite gerado:', accessLink);
         
         // Preparar dados do template
         const templateParams = {
@@ -3020,12 +3276,30 @@ function populateResponsibleFilter() {
 }
 
 function applyFilters() {
-    // Obter painel selecionado no relatório (ou usar o painel atual)
-    const reportPanelSelector = document.getElementById('report-panel-selector');
-    const selectedPanelId = reportPanelSelector?.value ? parseInt(reportPanelSelector.value) : currentPanelId;
+    // Obter modo de seleção de painéis
+    const selectionMode = document.querySelector('input[name="panel-selection-mode"]:checked')?.value || 'all';
+    let selectedPanelIds = [];
     
-    // Filtrar por painel primeiro
-    let filteredDemands = selectedPanelId ? demands.filter(d => d.panelId === selectedPanelId) : demands;
+    if (selectionMode === 'all') {
+        // Todos os painéis - não filtrar
+        selectedPanelIds = null;
+    } else if (selectionMode === 'single') {
+        // Painel único
+        const reportPanelSelector = document.getElementById('report-panel-selector');
+        const selectedPanelId = reportPanelSelector?.value ? parseInt(reportPanelSelector.value) : null;
+        if (selectedPanelId) {
+            selectedPanelIds = [selectedPanelId];
+        }
+    } else if (selectionMode === 'multiple') {
+        // Múltiplos painéis
+        const checkboxes = document.querySelectorAll('#panel-checkboxes input[type="checkbox"]:checked');
+        selectedPanelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    }
+    
+    // Filtrar por painéis selecionados
+    let filteredDemands = selectedPanelIds === null 
+        ? demands 
+        : demands.filter(d => selectedPanelIds.includes(d.panelId));
     
     // Filtro de status
     const statusFilter = document.getElementById('filter-status')?.value;
@@ -3299,6 +3573,53 @@ function setupReportListeners() {
             applyFilters();
         });
     }
+    
+    // Modos de seleção de painéis
+    const panelModeRadios = document.querySelectorAll('input[name="panel-selection-mode"]');
+    panelModeRadios.forEach(radio => {
+        radio.addEventListener('change', handlePanelSelectionModeChange);
+    });
+    
+    // Botão gerar relatório
+    const generateReportBtn = document.getElementById('generate-report-btn');
+    if (generateReportBtn) {
+        generateReportBtn.addEventListener('click', () => {
+            applyFilters();
+            // Scroll até os resultados
+            const reportSummary = document.querySelector('.report-summary');
+            if (reportSummary) {
+                reportSummary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    }
+    
+    // Botão limpar seleção
+    const clearSelectionBtn = document.getElementById('clear-panel-selection-btn');
+    if (clearSelectionBtn) {
+        clearSelectionBtn.addEventListener('click', () => {
+            // Resetar para "Todos os Painéis"
+            document.getElementById('panel-mode-all').checked = true;
+            handlePanelSelectionModeChange();
+            // Limpar outros filtros
+            document.getElementById('filter-status').value = 'all';
+            document.getElementById('filter-priority').value = 'all';
+            document.getElementById('filter-responsible').value = 'all';
+            document.getElementById('filter-date-start').value = '';
+            document.getElementById('filter-date-end').value = '';
+            // Aplicar filtros
+            applyFilters();
+        });
+    }
+    
+    // Checkboxes de múltiplos painéis
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('panel-checkbox')) {
+            applyFilters();
+        }
+    });
+    
+    // Inicializar modo de seleção
+    handlePanelSelectionModeChange();
     
     // Botões
     const refreshDashboardBtn = document.getElementById('refresh-dashboard-btn');

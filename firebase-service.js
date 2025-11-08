@@ -301,21 +301,40 @@ async function setupRealtimeDemandsListener(callback) {
             unsubscribeDemands = onSnapshot(
                 doc(db, 'system', 'demands'),
                 (docSnap) => {
+                    // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log('🔄 Demandas atualizadas em tempo real');
+                        console.log('🔄 Demandas atualizadas em tempo real', {
+                            timestamp: data.lastUpdate || 'sem timestamp',
+                            count: (data.demands || []).length
+                        });
                         if (callback) {
                             callback({
                                 demands: data.demands || [],
                                 counter: data.counter || 1
                             });
                         }
+                    } else {
+                        // Documento não existe ainda - notificar com dados vazios
+                        console.log('ℹ️ Documento de demandas ainda não existe no Firestore');
+                        if (callback) {
+                            callback({
+                                demands: [],
+                                counter: 1
+                            });
+                        }
                     }
                 },
                 (error) => {
-                    console.error('Erro no listener de demandas:', error);
+                    console.error('❌ Erro no listener de demandas:', error);
+                    // Tentar reconectar após 3 segundos
+                    setTimeout(() => {
+                        console.log('🔄 Tentando reconectar listener de demandas...');
+                        setupRealtimeDemandsListener(callback);
+                    }, 3000);
                 }
             );
+            console.log('✅ Listener de demandas configurado');
             return true;
         } catch (error) {
             console.error('Erro ao configurar listener de demandas:', error);
@@ -339,9 +358,14 @@ async function setupRealtimePanelsListener(callback) {
             unsubscribePanels = onSnapshot(
                 doc(db, 'system', 'panels'),
                 (docSnap) => {
+                    // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log('🔄 Painéis atualizados em tempo real');
+                        console.log('🔄 Painéis atualizados em tempo real', {
+                            timestamp: data.lastUpdate || 'sem timestamp',
+                            count: (data.panels || []).length,
+                            currentPanelId: data.currentPanelId
+                        });
                         if (callback) {
                             callback({
                                 panels: data.panels || [],
@@ -349,12 +373,28 @@ async function setupRealtimePanelsListener(callback) {
                                 currentPanelId: data.currentPanelId || null
                             });
                         }
+                    } else {
+                        // Documento não existe ainda - notificar com dados vazios
+                        console.log('ℹ️ Documento de painéis ainda não existe no Firestore');
+                        if (callback) {
+                            callback({
+                                panels: [],
+                                counter: 1,
+                                currentPanelId: null
+                            });
+                        }
                     }
                 },
                 (error) => {
-                    console.error('Erro no listener de painéis:', error);
+                    console.error('❌ Erro no listener de painéis:', error);
+                    // Tentar reconectar após 3 segundos
+                    setTimeout(() => {
+                        console.log('🔄 Tentando reconectar listener de painéis...');
+                        setupRealtimePanelsListener(callback);
+                    }, 3000);
                 }
             );
+            console.log('✅ Listener de painéis configurado');
             return true;
         } catch (error) {
             console.error('Erro ao configurar listener de painéis:', error);
@@ -378,18 +418,34 @@ async function setupRealtimePeopleListener(callback) {
             unsubscribePeople = onSnapshot(
                 doc(db, 'system', 'people'),
                 (docSnap) => {
+                    // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log('🔄 Pessoas atualizadas em tempo real');
+                        console.log('🔄 Pessoas atualizadas em tempo real', {
+                            timestamp: data.lastUpdate || 'sem timestamp',
+                            count: (data.people || []).length
+                        });
                         if (callback) {
                             callback(data.people || []);
+                        }
+                    } else {
+                        // Documento não existe ainda - notificar com dados vazios
+                        console.log('ℹ️ Documento de pessoas ainda não existe no Firestore');
+                        if (callback) {
+                            callback([]);
                         }
                     }
                 },
                 (error) => {
-                    console.error('Erro no listener de pessoas:', error);
+                    console.error('❌ Erro no listener de pessoas:', error);
+                    // Tentar reconectar após 3 segundos
+                    setTimeout(() => {
+                        console.log('🔄 Tentando reconectar listener de pessoas...');
+                        setupRealtimePeopleListener(callback);
+                    }, 3000);
                 }
             );
+            console.log('✅ Listener de pessoas configurado');
             return true;
         } catch (error) {
             console.error('Erro ao configurar listener de pessoas:', error);
