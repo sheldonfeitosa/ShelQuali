@@ -12,6 +12,27 @@
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <!-- Firebase Config (carrega as credenciais) -->
     <script type="module" src="firebase-config.js"></script>
+    <!-- Fallback: Verificar se Firebase carregou e tentar novamente se necessário -->
+    <script>
+        // Aguardar e verificar se window.db foi definido
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                if (typeof window.db === 'undefined' || window.db === null) {
+                    console.warn('⚠️ firebase-config.js não carregou. Tentando carregar novamente...');
+                    // Tentar carregar o módulo novamente
+                    const script = document.createElement('script');
+                    script.type = 'module';
+                    script.src = 'firebase-config.js';
+                    script.onerror = () => {
+                        console.error('❌ Erro ao carregar firebase-config.js. Verifique se o arquivo existe e está acessível.');
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    console.log('✅ Firebase config carregado com sucesso');
+                }
+            }, 1000);
+        });
+    </script>
     <!-- Serviço Firebase -->
     <script src="firebase-service.js"></script>
 </head>
