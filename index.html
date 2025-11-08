@@ -10,42 +10,36 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Biblioteca para envio de e-mails -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-    <!-- Firebase Config (carrega as credenciais) -->
-    <script type="module" src="firebase-config.js"></script>
-    <!-- Fallback: Inicializar Firebase inline se o módulo não carregar -->
+    <!-- Firebase Config: Inicializar inline imediatamente -->
     <script type="module">
-        // Aguardar um pouco e verificar se window.db foi definido
-        setTimeout(async () => {
-            if (typeof window.db === 'undefined' || window.db === null) {
-                console.warn('⚠️ firebase-config.js não carregou. Inicializando Firebase inline...');
-                try {
-                    // Configuração do Firebase
-                    const firebaseConfig = {
-                        apiKey: "AIzaSyCMFvZlVTZUUGCt8cAIeKvGiQiNM6dPyLc",
-                        authDomain: "qualisheldon.firebaseapp.com",
-                        projectId: "qualisheldon",
-                        storageBucket: "qualisheldon.appspot.com",
-                        messagingSenderId: "901385034024",
-                        appId: "1:901385034024:web:cb32c785421126f6c3181d"
-                    };
-                    
-                    // Inicializar Firebase
-                    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
-                    const { getFirestore } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-                    
-                    const app = initializeApp(firebaseConfig);
-                    const db = getFirestore(app);
-                    window.db = db;
-                    
-                    console.log('✅ Firebase inicializado com sucesso (fallback inline)!');
-                } catch (error) {
-                    console.error('❌ Erro ao inicializar Firebase (fallback):', error);
-                }
-            } else {
-                console.log('✅ Firebase config carregado com sucesso');
+        (async function() {
+            try {
+                // Configuração do Firebase
+                const firebaseConfig = {
+                    apiKey: "AIzaSyCMFvZlVTZUUGCt8cAIeKvGiQiNM6dPyLc",
+                    authDomain: "qualisheldon.firebaseapp.com",
+                    projectId: "qualisheldon",
+                    storageBucket: "qualisheldon.appspot.com",
+                    messagingSenderId: "901385034024",
+                    appId: "1:901385034024:web:cb32c785421126f6c3181d"
+                };
+                
+                // Inicializar Firebase
+                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+                const { getFirestore } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                
+                const app = initializeApp(firebaseConfig);
+                const db = getFirestore(app);
+                window.db = db;
+                
+                console.log('✅ Firebase inicializado com sucesso!');
+            } catch (error) {
+                console.error('❌ Erro ao inicializar Firebase:', error);
             }
-        }, 1500);
+        })();
     </script>
+    <!-- Tentar carregar firebase-config.js também (se existir e funcionar) -->
+    <script type="module" src="firebase-config.js" onerror="console.warn('firebase-config.js não carregou, mas Firebase já foi inicializado inline')"></script>
     <!-- Serviço Firebase -->
     <script src="firebase-service.js"></script>
 </head>
