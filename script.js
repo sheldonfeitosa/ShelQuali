@@ -35,21 +35,38 @@ let panelFormModal, closePanelFormModalBtn, panelForm, cancelPanelFormBtn, creat
 let currentPanelForEdit = null; // Armazena o ID do painel sendo editado
 
 // Registrar Service Worker para PWA
+// Service Worker só funciona em HTTPS ou localhost, não em file://
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('✅ Service Worker registrado com sucesso:', registration.scope);
-        
-        // Verificar atualizações periodicamente
-        setInterval(() => {
-          registration.update();
-        }, 60000); // A cada 1 minuto
-      })
-      .catch((error) => {
-        console.log('❌ Erro ao registrar Service Worker:', error);
-      });
-  });
+  const isLocalFile = window.location.protocol === 'file:';
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  // Só tentar registrar se não estiver em file://
+  if (!isLocalFile) {
+    window.addEventListener('load', () => {
+      // Tentar registrar com caminho relativo ou absoluto dependendo do ambiente
+      const swPath = window.location.pathname.includes('/index.html') 
+        ? './sw.js' 
+        : '/sw.js';
+      
+      navigator.serviceWorker.register(swPath)
+        .then((registration) => {
+          console.log('✅ Service Worker registrado com sucesso:', registration.scope);
+          
+          // Verificar atualizações periodicamente
+          setInterval(() => {
+            registration.update();
+          }, 60000); // A cada 1 minuto
+        })
+        .catch((error) => {
+          // Só mostrar erro se não for um erro esperado (ex: Service Worker não suportado)
+          if (error.message && !error.message.includes('not supported')) {
+            console.log('ℹ️ Service Worker não disponível (normal em desenvolvimento local):', error.message);
+          }
+        });
+    });
+  } else {
+    console.log('ℹ️ Service Worker desabilitado em ambiente local (file://)');
+  }
 }
 
 // Detectar se está rodando como PWA
@@ -75,6 +92,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Autenticar automaticamente para convidados
         localStorage.setItem('qualishel_authenticated', 'true');
         localStorage.setItem('qualishel_current_user', 'Convidado');
+        
+        // Configurar tipo de acesso baseado no parâmetro do link
+        const accessType = urlParams.get('access') || 'card';
+        if (accessType === 'panel') {
+            currentUserAccessType = 'panel';
+            const panelIdParam = urlParams.get('panel');
+            if (panelIdParam) {
+                currentUserRestrictedPanelId = parseInt(panelIdParam);
+            }
+        } else {
+            currentUserAccessType = 'card';
+            const demandId = urlParams.get('demand');
+            const panelIdParam = urlParams.get('panel');
+            if (demandId) {
+                currentUserRestrictedDemandId = parseInt(demandId);
+            }
+            if (panelIdParam) {
+                currentUserRestrictedPanelId = parseInt(panelIdParam);
+            }
+        }
+    } else if (isInvite) {
+        // Se já estiver autenticado mas veio de um link de convite, verificar tipo de acesso
+        const accessType = urlParams.get('access') || 'card';
+        if (accessType === 'panel') {
+            currentUserAccessType = 'panel';
+            const panelIdParam = urlParams.get('panel');
+            if (panelIdParam) {
+                currentUserRestrictedPanelId = parseInt(panelIdParam);
+            }
+        } else {
+            currentUserAccessType = 'card';
+            const demandId = urlParams.get('demand');
+            const panelIdParam = urlParams.get('panel');
+            if (demandId) {
+                currentUserRestrictedDemandId = parseInt(demandId);
+            }
+            if (panelIdParam) {
+                currentUserRestrictedPanelId = parseInt(panelIdParam);
+            }
+        }
+    } else {
+        // Usuário autenticado normalmente - acesso completo
+        currentUserAccessType = 'full';
     }
     
     const demandId = urlParams.get('demand');
@@ -104,6 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateCardCounts();
         setupReportListeners();
         loadEmailConfig();
+        loadProductionUrl(); // Carregar URL de produção
         initializeEmailJS();
         
         // Configurar listeners em tempo real para sincronização automática
@@ -166,35 +227,89 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         // Se for um convite, mostrar mensagem e focar na demanda
-        // Aguardar um pouco mais para garantir que dados foram carregados
+        // Aguardar carregamento completo dos dados antes de processar convite
         if (isInvite && demandId) {
             const invitePanelId = panelIdParam ? parseInt(panelIdParam) : null;
-            // Aguardar mais tempo para garantir que Firebase carregou
+            const inviteDemandId = parseInt(demandId);
+            
+            // Função para aguardar dados carregarem e então processar convite
+            const waitForDataAndProcessInvite = async (attempts = 0) => {
+                const maxWaitAttempts = 20; // Aguardar até 10 segundos
+                
+                // Verificar se os dados foram carregados
+                const hasData = demands.length > 0 || 
+                               (typeof window.firebaseService !== 'undefined' && 
+                                window.firebaseService.isInitialized());
+                
+                // Verificar se a demanda específica existe
+                const demandExists = demands.find(d => d.id === inviteDemandId);
+                
+                if (demandExists) {
+                    // Demanda encontrada, processar convite
+                    console.log('✅ Demanda encontrada, processando convite...');
+                    handleInviteAccess(inviteDemandId, invitePanelId);
+                } else if (attempts < maxWaitAttempts) {
+                    // Ainda não encontrou, aguardar mais
+                    console.log(`⏳ Aguardando dados carregarem... (tentativa ${attempts + 1}/${maxWaitAttempts})`);
+                    setTimeout(() => waitForDataAndProcessInvite(attempts + 1), 500);
+                } else {
+                    // Timeout - salvar como convite pendente e tentar quando dados chegarem
+                    console.warn('⚠️ Timeout aguardando dados. Salvando convite como pendente...');
+                    pendingInvite = { demandId: inviteDemandId, panelId: invitePanelId };
+                    // Tentar mesmo assim (pode estar em outro dispositivo ou dados podem chegar depois)
+                    handleInviteAccess(inviteDemandId, invitePanelId);
+                }
+            };
+            
+            // Iniciar espera após um pequeno delay inicial
             setTimeout(() => {
-                handleInviteAccess(parseInt(demandId), invitePanelId);
-            }, 800);
+                waitForDataAndProcessInvite();
+            }, 1000);
         }
     }, 100);
 });
 
 // Função para lidar com acesso via convite
 function handleInviteAccess(demandId, panelId = null, retryCount = 0) {
-    const maxRetries = 10; // Tentar até 10 vezes (5 segundos)
+    const maxRetries = 20; // Tentar até 20 vezes (10 segundos)
     
-    const demand = demands.find(d => d.id === demandId);
+    // Converter demandId para número se necessário
+    const numericDemandId = typeof demandId === 'string' ? parseInt(demandId) : demandId;
+    
+    console.log(`🔍 Procurando demanda ID: ${numericDemandId} (tipo: ${typeof numericDemandId})`);
+    console.log(`📊 Total de demandas carregadas: ${demands.length}`);
+    if (demands.length > 0) {
+        console.log(`📋 IDs das demandas disponíveis:`, demands.map(d => `${d.id} (${typeof d.id})`));
+    }
+    
+    const demand = demands.find(d => {
+        // Comparação flexível - aceitar tanto string quanto número
+        const demandIdNum = typeof d.id === 'string' ? parseInt(d.id) : d.id;
+        return demandIdNum === numericDemandId || d.id === numericDemandId;
+    });
     
     if (!demand) {
         // Demanda não encontrada - pode ainda estar carregando do Firebase
         if (retryCount < maxRetries) {
-            console.log(`Aguardando demanda ${demandId} carregar... (tentativa ${retryCount + 1}/${maxRetries})`);
-            setTimeout(() => handleInviteAccess(demandId, panelId, retryCount + 1), 500);
+            console.log(`⏳ Aguardando demanda ${numericDemandId} carregar... (tentativa ${retryCount + 1}/${maxRetries})`);
+            console.log(`📊 Demandas atuais: ${demands.length}`);
+            setTimeout(() => handleInviteAccess(numericDemandId, panelId, retryCount + 1), 500);
             return;
         } else {
-            console.error(`Demanda ${demandId} não encontrada após ${maxRetries} tentativas`);
-            alert('Demanda não encontrada. Verifique se o link está correto ou se você tem acesso.');
+            console.error(`❌ Demanda ${numericDemandId} não encontrada após ${maxRetries} tentativas`);
+            console.error(`📊 Total de demandas: ${demands.length}`);
+            console.error(`📋 IDs disponíveis:`, demands.map(d => d.id));
+            
+            // Mensagem mais informativa
+            const errorMsg = `Demanda não encontrada (ID: ${numericDemandId}).\n\n` +
+                           `Total de demandas carregadas: ${demands.length}\n` +
+                           `Verifique se o link está correto ou se você tem acesso.`;
+            alert(errorMsg);
             return;
         }
     }
+    
+    console.log('✅ Demanda encontrada:', demand.title);
     
     // Selecionar o painel correto - priorizar panelId do link, depois panelId da demanda
     let targetPanelId = panelId;
@@ -214,21 +329,30 @@ function handleInviteAccess(demandId, panelId = null, retryCount = 0) {
         currentPanelId = targetPanelId;
         savePanels();
         
-        // Aguardar um pouco para garantir que o seletor foi atualizado
-        setTimeout(() => {
-            renderPanelSelector();
-            renderKanban();
-            updateCardCounts();
-            updateDashboard();
-        }, 100);
+        // Atualizar o seletor e renderizar o Kanban com o painel correto
+        renderPanelSelector();
+        renderKanban();
+        updateCardCounts();
+        updateDashboard();
     } else if (!targetPanelId) {
         // Se não há painel, renderizar mesmo assim
+        renderKanban();
+        updateCardCounts();
+    } else {
+        // Se o painel já está correto, garantir que o Kanban está renderizado
         renderKanban();
         updateCardCounts();
     }
     
     // Obter informações do painel
     const panel = panels.find(p => p.id === targetPanelId);
+    
+    // Determinar tipo de acesso e mensagem apropriada
+    const accessType = currentUserAccessType || 'card';
+    const accessTypeLabel = accessType === 'panel' ? 'Painel Completo' : 'Apenas este Card';
+    const accessTypeDescription = accessType === 'panel' 
+        ? 'Você tem acesso a todo o painel e pode ver e colaborar em todas as demandas.'
+        : 'Você tem acesso apenas a este card específico e não pode ver outras demandas do painel.';
     
     // Mostrar notificação de boas-vindas
     const welcomeMessage = `
@@ -240,6 +364,10 @@ function handleInviteAccess(demandId, panelId = null, retryCount = 0) {
                 <p style="margin-top: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;">${demand.description || 'Sem descrição'}</p>
             </div>
             ${panel ? `<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.5rem;"><strong>Painel:</strong> ${panel.name}</p>` : ''}
+            <div style="background: #fef3c7; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid #f59e0b;">
+                <p style="font-size: 0.875rem; margin: 0; color: #92400e;"><strong>Permissão:</strong> ${accessTypeLabel}</p>
+                <p style="font-size: 0.75rem; margin-top: 0.5rem; color: #78350f;">${accessTypeDescription}</p>
+            </div>
             <p style="font-size: 0.875rem; color: var(--text-secondary);">
                 Navegue até o card no Kanban para ver detalhes e colaborar!
             </p>
@@ -273,16 +401,43 @@ function handleInviteAccess(demandId, panelId = null, retryCount = 0) {
     document.body.appendChild(welcomeModal);
     document.body.style.overflow = 'hidden';
     
-    // Scroll até o card da demanda
-    setTimeout(() => {
+    // Função para focar no card - tentar várias vezes até encontrar
+    const focusOnCard = (attempts = 0) => {
+        const maxAttempts = 10;
         const card = document.querySelector(`[data-id="${demandId}"]`);
+        
         if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Scroll suave até o card
+            card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            
+            // Destacar o card
+            card.style.transition = 'box-shadow 0.3s ease';
             card.style.boxShadow = '0 0 20px rgba(37, 99, 235, 0.5)';
+            card.style.zIndex = '10';
+            card.style.position = 'relative';
+            
+            // Remover destaque após 3 segundos
             setTimeout(() => {
                 card.style.boxShadow = '';
+                card.style.zIndex = '';
+                card.style.position = '';
             }, 3000);
+            
+            console.log('✅ Card encontrado e destacado:', demandId);
+        } else if (attempts < maxAttempts) {
+            // Se não encontrou, tentar novamente após um delay
+            setTimeout(() => {
+                console.log(`Tentando encontrar card ${demandId}... (tentativa ${attempts + 1}/${maxAttempts})`);
+                focusOnCard(attempts + 1);
+            }, 300);
+        } else {
+            console.warn('⚠️ Card não encontrado após várias tentativas:', demandId);
         }
+    };
+    
+    // Tentar focar no card após um pequeno delay para garantir que o DOM foi renderizado
+    setTimeout(() => {
+        focusOnCard();
     }, 500);
 }
 
@@ -298,18 +453,55 @@ window.closeWelcomeModal = function() {
 window.closeWelcomeModalAndFocusDemand = function(demandId) {
     closeWelcomeModal();
     
-    // Focar na demanda
-    setTimeout(() => {
+    // Focar na demanda - tentar várias vezes até encontrar
+    const focusOnDemand = (attempts = 0) => {
+        const maxAttempts = 15;
         const card = document.querySelector(`[data-id="${demandId}"]`);
+        
         if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Scroll suave até o card
+            card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            
+            // Destacar o card
+            card.style.transition = 'box-shadow 0.3s ease';
             card.style.boxShadow = '0 0 20px rgba(37, 99, 235, 0.5)';
+            card.style.zIndex = '10';
+            card.style.position = 'relative';
+            
+            // Aguardar um pouco e abrir modal de tarefas/chat
             setTimeout(() => {
-                card.style.boxShadow = '';
                 // Abrir modal de tarefas/chat automaticamente
+                if (typeof openTasksChat === 'function') {
+                    openTasksChat(demandId);
+                }
+                
+                // Remover destaque após 3 segundos
+                setTimeout(() => {
+                    card.style.boxShadow = '';
+                    card.style.zIndex = '';
+                    card.style.position = '';
+                }, 2000);
+            }, 500);
+            
+            console.log('✅ Card encontrado e modal aberto:', demandId);
+        } else if (attempts < maxAttempts) {
+            // Se não encontrou, tentar novamente após um delay
+            setTimeout(() => {
+                console.log(`Tentando encontrar card ${demandId}... (tentativa ${attempts + 1}/${maxAttempts})`);
+                focusOnDemand(attempts + 1);
+            }, 300);
+        } else {
+            console.warn('⚠️ Card não encontrado após várias tentativas:', demandId);
+            // Mesmo sem encontrar o card, tentar abrir o modal
+            if (typeof openTasksChat === 'function') {
                 openTasksChat(demandId);
-            }, 1000);
+            }
         }
+    };
+    
+    // Iniciar tentativas de focar no card
+    setTimeout(() => {
+        focusOnDemand();
     }, 300);
 };
 
@@ -368,6 +560,17 @@ function setupEventListeners() {
     const testEmailBtn = document.getElementById('test-email-btn');
     if (testEmailBtn) {
         testEmailBtn.addEventListener('click', testEmailSend);
+    }
+
+    // Configuração de URL de Produção
+    const saveProductionUrlBtn = document.getElementById('save-production-url-btn');
+    if (saveProductionUrlBtn) {
+        saveProductionUrlBtn.addEventListener('click', saveProductionUrl);
+    }
+    
+    const testProductionUrlBtn = document.getElementById('test-production-url-btn');
+    if (testProductionUrlBtn) {
+        testProductionUrlBtn.addEventListener('click', testProductionUrl);
     }
 
     // Configuração de Usuário
@@ -496,8 +699,10 @@ function switchPage(pageName) {
         // Garantir que seletores de painéis estejam atualizados
         renderReportPanelSelector();
         renderPanelCheckboxes();
-        // Atualizar relatórios
-        updateReports();
+        // Atualizar relatórios (agora é async)
+        updateReports().catch(err => {
+            console.error('Erro ao atualizar relatórios:', err);
+        });
     } else if (pageName === 'configuracoes') {
         loadSettingsPage();
     }
@@ -536,6 +741,27 @@ function handleFormSubmit(e) {
 }
 
 // Renderização do Kanban
+// Função para verificar se usuário pode ver uma demanda específica
+function canUserViewDemand(demandId) {
+    // Se acesso completo, pode ver tudo
+    if (currentUserAccessType === 'full' || currentUserAccessType === null) {
+        return true;
+    }
+    
+    // Se acesso apenas ao painel, pode ver todas as demandas do painel
+    if (currentUserAccessType === 'panel') {
+        const demand = demands.find(d => d.id === demandId);
+        return demand && demand.panelId === currentUserRestrictedPanelId;
+    }
+    
+    // Se acesso apenas ao card, só pode ver o card específico
+    if (currentUserAccessType === 'card') {
+        return demandId === currentUserRestrictedDemandId;
+    }
+    
+    return false;
+}
+
 function renderKanban() {
     // Se não houver painel selecionado, mostrar mensagem
     if (!currentPanelId) {
@@ -559,15 +785,34 @@ function renderKanban() {
         column.innerHTML = '';
         
         // Filtrar demandas do painel atual
-        const demandsInColumn = demands.filter(d => d.status === status && d.panelId === currentPanelId);
+        let demandsInColumn = demands.filter(d => d.status === status && d.panelId === currentPanelId);
+        
+        // Aplicar restrições de acesso
+        if (currentUserAccessType === 'card') {
+            // Se acesso apenas ao card, mostrar apenas o card específico
+            demandsInColumn = demandsInColumn.filter(d => d.id === currentUserRestrictedDemandId);
+        } else if (currentUserAccessType === 'panel') {
+            // Se acesso ao painel, mostrar apenas demandas do painel restrito
+            demandsInColumn = demandsInColumn.filter(d => d.panelId === currentUserRestrictedPanelId);
+        }
         
         if (demandsInColumn.length === 0) {
-            column.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <p>Nenhuma demanda aqui</p>
-                </div>
-            `;
+            // Mensagem diferente se for acesso restrito
+            if (currentUserAccessType === 'card') {
+                column.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔒</div>
+                        <p>Acesso restrito a este card</p>
+                    </div>
+                `;
+            } else {
+                column.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>Nenhuma demanda aqui</p>
+                    </div>
+                `;
+            }
         } else {
             demandsInColumn.forEach(demand => {
                 const card = createCard(demand);
@@ -997,17 +1242,43 @@ function updateCardCounts() {
 function renderPanelSelector() {
     if (!panelSelector) return;
     
-    panelSelector.innerHTML = '<option value="">Selecione um painel...</option>';
-    
-    panels.forEach(panel => {
-        const option = document.createElement('option');
-        option.value = panel.id;
-        option.textContent = panel.name;
-        if (panel.id === currentPanelId) {
+    // Se acesso restrito ao card, desabilitar seletor de painel
+    if (currentUserAccessType === 'card') {
+        panelSelector.innerHTML = '<option value="">Acesso restrito a um card específico</option>';
+        panelSelector.disabled = true;
+        panelSelector.style.opacity = '0.6';
+        panelSelector.style.cursor = 'not-allowed';
+    } else if (currentUserAccessType === 'panel') {
+        // Se acesso ao painel, mostrar apenas o painel permitido
+        panelSelector.innerHTML = '';
+        const allowedPanel = panels.find(p => p.id === currentUserRestrictedPanelId);
+        if (allowedPanel) {
+            const option = document.createElement('option');
+            option.value = allowedPanel.id;
+            option.textContent = allowedPanel.name;
             option.selected = true;
+            panelSelector.appendChild(option);
         }
-        panelSelector.appendChild(option);
-    });
+        panelSelector.disabled = true;
+        panelSelector.style.opacity = '0.6';
+        panelSelector.style.cursor = 'not-allowed';
+    } else {
+        // Acesso completo - comportamento normal
+        panelSelector.innerHTML = '<option value="">Selecione um painel...</option>';
+        panelSelector.disabled = false;
+        panelSelector.style.opacity = '1';
+        panelSelector.style.cursor = 'pointer';
+        
+        panels.forEach(panel => {
+            const option = document.createElement('option');
+            option.value = panel.id;
+            option.textContent = panel.name;
+            if (panel.id === currentPanelId) {
+                option.selected = true;
+            }
+            panelSelector.appendChild(option);
+        });
+    }
     
     // Atualizar também os seletores do dashboard e relatório
     renderDashboardPanelSelector();
@@ -1330,6 +1601,35 @@ async function setupRealtimeSync() {
                 updateCardCounts();
                 updateDashboard();
                 
+                // Se houver um convite pendente, tentar processá-lo agora que os dados foram atualizados
+                if (pendingInvite) {
+                    console.log('🔄 Dados atualizados em tempo real, verificando convite pendente...');
+                    console.log(`📋 Procurando demanda ID: ${pendingInvite.demandId}`);
+                    console.log(`📊 Total de demandas agora: ${demands.length}`);
+                    console.log(`📋 IDs disponíveis:`, demands.map(d => `${d.id} (${typeof d.id})`));
+                    
+                    const { demandId, panelId } = pendingInvite;
+                    const numericDemandId = typeof demandId === 'string' ? parseInt(demandId) : demandId;
+                    
+                    const demand = demands.find(d => {
+                        const demandIdNum = typeof d.id === 'string' ? parseInt(d.id) : d.id;
+                        return demandIdNum === numericDemandId || d.id === numericDemandId;
+                    });
+                    
+                    if (demand) {
+                        console.log('✅ Demanda do convite encontrada após atualização em tempo real!');
+                        console.log('📋 Demanda encontrada:', demand.title, 'ID:', demand.id);
+                        const savedPendingInvite = { ...pendingInvite }; // Salvar antes de limpar
+                        pendingInvite = null; // Limpar convite pendente
+                        // Aguardar um pouco para garantir que o DOM foi atualizado
+                        setTimeout(() => {
+                            handleInviteAccess(savedPendingInvite.demandId, savedPendingInvite.panelId);
+                        }, 500);
+                    } else {
+                        console.log(`⏳ Demanda ${numericDemandId} ainda não encontrada. Continuando a aguardar...`);
+                    }
+                }
+                
                 // Salvar no localStorage também (mas não salvar no Firebase para evitar loop)
                 localStorage.setItem('qualishel-demands', JSON.stringify(demands));
                 localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
@@ -1643,6 +1943,12 @@ async function loadDemands() {
     
     demands = savedData.demands;
     demandIdCounter = savedData.counter;
+    
+    // Log para debug de convites
+    console.log(`📦 Demandas carregadas: ${demands.length}`);
+    if (demands.length > 0) {
+        console.log(`📋 IDs das demandas:`, demands.map(d => d.id));
+    }
     
     // Garantir que todos os chats sejam preservados e nunca apagados
     // E garantir que todos os cards tenham um panelId válido
@@ -2043,9 +2349,129 @@ function renderCollaboratorsModal() {
         }).join('');
     }
     
+    // Renderizar seção de compartilhamento de link
+    renderInviteLinkSection(demand);
+    
     // Renderizar pessoas disponíveis
     updateAvailablePeopleList();
 }
+
+// Função para renderizar seção de compartilhamento de link
+function renderInviteLinkSection(demand) {
+    const inviteLinkSection = document.getElementById('invite-link-section');
+    if (!inviteLinkSection) return;
+    
+    // Obter tipo de acesso selecionado (padrão: 'card')
+    const accessTypeSelect = document.getElementById('invite-access-type');
+    const selectedAccessType = accessTypeSelect ? accessTypeSelect.value : 'card';
+    
+    // Gerar link de convite com o tipo de acesso selecionado
+    const inviteData = generatePanelInviteLink(demand.id, demand.panelId, selectedAccessType);
+    if (!inviteData) {
+        inviteLinkSection.innerHTML = '<p class="empty-message">Erro ao gerar link de convite.</p>';
+        return;
+    }
+    
+    const { link, panelName, demandTitle, accessType } = inviteData;
+    
+    // Escapar para HTML e para JavaScript (atributos onclick)
+    const linkEscaped = escapeHtml(link);
+    const linkJsEscaped = link.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    const demandTitleEscaped = escapeHtml(demandTitle);
+    const demandTitleJsEscaped = demandTitle.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    const panelNameEscaped = escapeHtml(panelName);
+    const panelNameJsEscaped = panelName.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    
+    const accessTypeLabel = accessType === 'panel' ? 'Painel Completo' : 'Apenas este Card';
+    const accessTypeDescription = accessType === 'panel' 
+        ? 'O convidado terá acesso a todo o painel e poderá ver e colaborar em todas as demandas.'
+        : 'O convidado terá acesso apenas a este card específico e não poderá ver outras demandas do painel.';
+    
+    inviteLinkSection.innerHTML = `
+        <div class="invite-link-container">
+            <div class="invite-link-info">
+                <h5>🔗 Link de Convite</h5>
+                <p class="invite-link-description">
+                    Escolha o tipo de acesso e compartilhe o link gerado.
+                </p>
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="invite-access-type" style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: var(--text-primary);">
+                        Tipo de Acesso:
+                    </label>
+                    <select id="invite-access-type" class="invite-access-select" onchange="updateInviteLink()">
+                        <option value="card" ${accessType === 'card' ? 'selected' : ''}>📋 Apenas este Card</option>
+                        <option value="panel" ${accessType === 'panel' ? 'selected' : ''}>📊 Painel Completo</option>
+                    </select>
+                    <small style="display: block; margin-top: 0.5rem; color: var(--text-secondary); font-size: 0.75rem;">
+                        ${accessTypeDescription}
+                    </small>
+                </div>
+                
+                <div class="invite-link-details">
+                    <div class="invite-detail-item">
+                        <strong>Painel:</strong> ${panelNameEscaped}
+                    </div>
+                    <div class="invite-detail-item">
+                        <strong>Demanda:</strong> ${demandTitleEscaped}
+                    </div>
+                    <div class="invite-detail-item" style="background: #fef3c7; border-left-color: #f59e0b;">
+                        <strong>Permissão:</strong> ${accessTypeLabel}
+                    </div>
+                </div>
+            </div>
+            <div class="invite-link-input-group">
+                <input type="text" 
+                       id="invite-link-input" 
+                       value="${linkEscaped}" 
+                       readonly 
+                       class="invite-link-input"
+                       onclick="this.select()">
+                <button type="button" 
+                        class="btn-primary btn-copy-link" 
+                        onclick="copyInviteLink('${linkJsEscaped}')"
+                        title="Copiar link">
+                    📋 Copiar
+                </button>
+            </div>
+            <div class="invite-share-buttons">
+                <button type="button" 
+                        class="btn-share btn-share-whatsapp" 
+                        onclick="shareInviteViaWhatsApp('${linkJsEscaped}', '${demandTitleJsEscaped}')"
+                        title="Compartilhar via WhatsApp">
+                    📱 WhatsApp
+                </button>
+                <button type="button" 
+                        class="btn-share btn-share-email" 
+                        onclick="shareInviteViaEmail('${linkJsEscaped}', '${demandTitleJsEscaped}', '${panelNameJsEscaped}')"
+                        title="Compartilhar via E-mail">
+                    ✉️ E-mail
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Função para atualizar o link quando o tipo de acesso mudar
+window.updateInviteLink = function() {
+    if (currentDemandForCollaborators === null) return;
+    const demand = demands.find(d => d.id === currentDemandForCollaborators);
+    if (!demand) return;
+    renderInviteLinkSection(demand);
+};
+
+// Funções globais para acesso via onclick
+window.copyInviteLink = async function(link) {
+    await copyInviteLinkToClipboard(link);
+};
+
+window.shareInviteViaWhatsApp = function(link, demandTitle) {
+    shareViaWhatsApp(link, demandTitle);
+};
+
+window.shareInviteViaEmail = function(link, demandTitle, panelName) {
+    shareViaEmail(link, demandTitle, panelName);
+};
 
 function updateAvailablePeopleList() {
     const availableList = document.getElementById('available-people-list');
@@ -2122,7 +2548,10 @@ async function handleAddCollaborator() {
     
     // Enviar e-mail se solicitado e houver e-mail
     if (sendEmail && email) {
-        await sendInviteEmail(name, email, demand);
+        // Obter tipo de acesso selecionado (padrão: 'card')
+        const accessTypeSelect = document.getElementById('invite-access-type');
+        const selectedAccessType = accessTypeSelect ? accessTypeSelect.value : 'card';
+        await sendInviteEmail(name, email, demand, selectedAccessType);
     }
     
     // Limpar campos
@@ -2143,7 +2572,10 @@ window.addExistingCollaborator = async function(name, email) {
         // Perguntar se quer enviar convite mesmo assim
         const sendEmail = email && confirm(`${name} já está no projeto. Deseja enviar um convite por e-mail mesmo assim?`);
         if (sendEmail && email) {
-            await sendInviteEmail(name, email, demand);
+            // Obter tipo de acesso selecionado (padrão: 'card')
+            const accessTypeSelect = document.getElementById('invite-access-type');
+            const selectedAccessType = accessTypeSelect ? accessTypeSelect.value : 'card';
+            await sendInviteEmail(name, email, demand, selectedAccessType);
         }
         return;
     }
@@ -2160,7 +2592,10 @@ window.addExistingCollaborator = async function(name, email) {
     
     // Enviar e-mail se houver e-mail
     if (email) {
-        await sendInviteEmail(name, email, demand);
+        // Obter tipo de acesso selecionado (padrão: 'card')
+        const accessTypeSelect = document.getElementById('invite-access-type');
+        const selectedAccessType = accessTypeSelect ? accessTypeSelect.value : 'card';
+        await sendInviteEmail(name, email, demand, selectedAccessType);
     }
 };
 
@@ -2190,6 +2625,179 @@ function saveAvailablePeople() {
             console.warn('Erro ao sincronizar pessoas com Firebase:', err);
         });
     }
+}
+
+// ========== GERAR LINK DE CONVITE ==========
+
+// Variáveis globais para controle de acesso
+let currentUserAccessType = null; // 'full', 'panel', 'card' ou null
+let currentUserRestrictedDemandId = null; // ID da demanda se acesso for apenas ao card
+let currentUserRestrictedPanelId = null; // ID do painel se acesso for limitado
+let pendingInvite = null; // Armazena informações do convite pendente {demandId, panelId}
+
+// Função reutilizável para gerar link de convite do painel
+// accessType: 'panel' = acesso ao painel completo, 'card' = acesso apenas ao card
+function generatePanelInviteLink(demandId, panelId = null, accessType = 'card') {
+    const demand = demands.find(d => d.id === demandId);
+    if (!demand) {
+        console.error('Demanda não encontrada:', demandId);
+        return null;
+    }
+    
+    // Obter informações do painel
+    const validPanelId = panelId || demand.panelId || currentPanelId;
+    const panel = panels.find(p => p.id === validPanelId);
+    const panelName = panel ? panel.name : 'Painel Principal';
+    
+    // Obter URL do site (para o link de acesso)
+    // IMPORTANTE: Sempre usar URL de produção para links de convite
+    let siteUrl = window.location.origin;
+    let isUsingProductionUrl = false;
+    
+    // Se estiver em localhost, file://, ou 127.0.0.1, OBRIGAR uso de URL de produção
+    if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1') || siteUrl.startsWith('file://')) {
+        // Tentar obter URL de produção salva
+        const savedProductionUrl = localStorage.getItem('qualishel-production-url');
+        if (savedProductionUrl && savedProductionUrl.trim()) {
+            // Limpar a URL - remover qualquer caminho local que possa ter sido incluído
+            let cleanUrl = savedProductionUrl.trim();
+            // Remover caminhos do Windows (C:, D:, etc.)
+            cleanUrl = cleanUrl.replace(/\/[A-Z]:\/.*$/, '');
+            // Tentar extrair apenas o domínio usando URL object
+            try {
+                const urlObj = new URL(cleanUrl);
+                cleanUrl = `${urlObj.protocol}//${urlObj.host}`;
+            } catch (e) {
+                // Se falhar, tentar limpar manualmente
+                cleanUrl = cleanUrl.replace(/\/C:.*$/, '').replace(/\/[^\/]*\.html.*$/, '');
+                // Garantir que começa com http:// ou https://
+                if (!cleanUrl.match(/^https?:\/\//)) {
+                    if (cleanUrl.startsWith('//')) {
+                        cleanUrl = 'https:' + cleanUrl;
+                    } else {
+                        cleanUrl = 'https://' + cleanUrl.replace(/^\/+/, '');
+                    }
+                }
+            }
+            siteUrl = cleanUrl;
+            isUsingProductionUrl = true;
+            console.log('✅ Usando URL de produção salva (limpa):', siteUrl);
+        } else {
+            // Se não tiver salva, mostrar erro e pedir para configurar
+            const errorMsg = '⚠️ URL de produção não configurada! Configure nas Configurações antes de enviar convites.';
+            console.error('❌', errorMsg);
+            alert('⚠️ ATENÇÃO: URL de produção não configurada!\n\nPara enviar convites, você precisa configurar a URL de produção (ex: https://shel-quali.vercel.app) nas Configurações.\n\nVá em: Configurações → URL de Produção');
+            return null;
+        }
+    }
+    
+    // IMPORTANTE: Se estiver usando URL de produção, NÃO incluir pathname local
+    // Apenas usar o pathname se estiver na mesma origem (não é produção remota)
+    if (!isUsingProductionUrl) {
+        const pathname = window.location.pathname;
+        // Se estiver em um subdiretório, manter o caminho base
+        if (pathname && pathname !== '/' && pathname !== '/index.html') {
+            const pathParts = pathname.split('/').filter(p => p && p !== 'index.html');
+            if (pathParts.length > 0) {
+                siteUrl += '/' + pathParts.join('/');
+            }
+        }
+    }
+    
+    // Limpar a URL: remover barra dupla, remover barra final, garantir formato correto
+    siteUrl = siteUrl.replace(/\/+/g, '/').replace(/\/$/, '');
+    // Garantir que não há caminhos locais do Windows (C:, D:, etc.) - limpeza final
+    siteUrl = siteUrl.replace(/\/[A-Z]:\/.*$/, '').replace(/\/C:.*$/, '');
+    
+    // Construir link com tipo de acesso
+    // Sempre usar /index.html para produção
+    let accessLink = `${siteUrl}/index.html?demand=${demandId}&panel=${validPanelId}&invite=true`;
+    
+    // Log para debug
+    console.log('🔗 Link gerado:', accessLink);
+    if (accessType === 'panel') {
+        accessLink += '&access=panel';
+    } else {
+        accessLink += '&access=card';
+    }
+    
+    return {
+        link: accessLink,
+        panelName: panelName,
+        demandTitle: demand.title,
+        accessType: accessType
+    };
+}
+
+// Função para copiar link para área de transferência
+async function copyInviteLinkToClipboard(link) {
+    try {
+        await navigator.clipboard.writeText(link);
+        showNotification('Link copiado para a área de transferência!', 'success');
+        return true;
+    } catch (err) {
+        // Fallback para navegadores mais antigos
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showNotification('Link copiado para a área de transferência!', 'success');
+            return true;
+        } catch (err2) {
+            document.body.removeChild(textArea);
+            showNotification('Erro ao copiar link. Tente selecionar e copiar manualmente.', 'error');
+            return false;
+        }
+    }
+}
+
+// Função para compartilhar via WhatsApp
+function shareViaWhatsApp(link, demandTitle) {
+    const message = encodeURIComponent(`Olá! Você foi convidado para participar do painel no Qualishel.\n\nDemanda: ${demandTitle}\n\nAcesse: ${link}`);
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+}
+
+// Função para compartilhar via E-mail
+function shareViaEmail(link, demandTitle, panelName) {
+    const subject = encodeURIComponent(`Convite para participar do painel: ${panelName}`);
+    const body = encodeURIComponent(`Olá!\n\nVocê foi convidado para participar do painel no Qualishel.\n\nDemanda: ${demandTitle}\nPainel: ${panelName}\n\nAcesse o link: ${link}\n\nAtenciosamente,`);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+// Função para mostrar notificação
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `invite-notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+        max-width: 400px;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
 }
 
 // ========== CONFIGURAÇÃO DE E-MAIL (EmailJS) ==========
@@ -2324,6 +2932,106 @@ function updateEmailStatus() {
     }
 }
 
+// ========== CONFIGURAÇÃO DE URL DE PRODUÇÃO ==========
+
+function loadProductionUrl() {
+    let savedUrl = localStorage.getItem('qualishel-production-url');
+    const input = document.getElementById('production-url-input');
+    
+    // Se a URL salva contém caminhos locais, limpar automaticamente
+    if (savedUrl && (savedUrl.includes('C:/') || savedUrl.includes('C:\\') || savedUrl.includes('/C:'))) {
+        console.warn('⚠️ URL de produção contém caminho local. Limpando...');
+        try {
+            const urlObj = new URL(savedUrl);
+            savedUrl = `${urlObj.protocol}//${urlObj.host}`;
+            localStorage.setItem('qualishel-production-url', savedUrl);
+            console.log('✅ URL limpa e salva:', savedUrl);
+        } catch (e) {
+            // Se não conseguir limpar, remover completamente
+            console.error('❌ URL inválida. Removendo do localStorage.');
+            localStorage.removeItem('qualishel-production-url');
+            savedUrl = null;
+        }
+    }
+    
+    if (input && savedUrl) {
+        input.value = savedUrl;
+    }
+    updateProductionUrlStatus();
+}
+
+function saveProductionUrl() {
+    const input = document.getElementById('production-url-input');
+    if (!input) return;
+    
+    const url = input.value.trim();
+    
+    if (!url) {
+        alert('Por favor, informe a URL de produção.');
+        return;
+    }
+    
+    // Validar formato de URL
+    try {
+        const urlObj = new URL(url);
+        if (!urlObj.protocol.startsWith('http')) {
+            throw new Error('URL deve começar com http:// ou https://');
+        }
+    } catch (error) {
+        alert('URL inválida. Por favor, use um formato válido (ex: https://shel-quali.vercel.app)');
+        return;
+    }
+    
+    // Remover barra final e limpar completamente
+    let cleanUrl = url.replace(/\/$/, '');
+    // Remover qualquer caminho local que possa ter sido incluído
+    cleanUrl = cleanUrl.replace(/\/[A-Z]:\/.*$/, '').replace(/\/C:.*$/, '');
+    // Garantir que é apenas o domínio
+    try {
+        const urlObj = new URL(cleanUrl);
+        cleanUrl = `${urlObj.protocol}//${urlObj.host}`;
+    } catch (e) {
+        // Se falhar, manter como está mas limpar caminhos locais
+        cleanUrl = cleanUrl.replace(/\/C:.*$/, '').replace(/\/[^\/]*\.html.*$/, '');
+    }
+    
+    localStorage.setItem('qualishel-production-url', cleanUrl);
+    updateProductionUrlStatus();
+    showEmailNotification('URL de produção salva com sucesso!', 'success');
+    
+    console.log('✅ URL de produção salva:', cleanUrl);
+}
+
+function updateProductionUrlStatus() {
+    const statusElement = document.getElementById('production-url-status');
+    if (!statusElement) return;
+    
+    const savedUrl = localStorage.getItem('qualishel-production-url');
+    if (savedUrl && savedUrl.trim()) {
+        statusElement.textContent = '✓ Configurado';
+        statusElement.className = 'settings-status status-configured';
+    } else {
+        statusElement.textContent = 'Não configurado';
+        statusElement.className = 'settings-status status-not-configured';
+    }
+}
+
+function testProductionUrl() {
+    const input = document.getElementById('production-url-input');
+    if (!input) return;
+    
+    const url = input.value.trim();
+    
+    if (!url) {
+        alert('Por favor, informe a URL de produção primeiro.');
+        return;
+    }
+    
+    // Abrir URL em nova aba
+    window.open(url, '_blank');
+    showEmailNotification('Abrindo URL em nova aba...', 'info');
+}
+
 async function testEmailSend() {
     const testEmailInput = prompt('Digite um e-mail para enviar o teste:');
     
@@ -2370,6 +3078,8 @@ function saveUserName() {
 }
 
 function loadSettingsPage() {
+    // Carregar URL de produção
+    loadProductionUrl();
     // Carregar configurações de e-mail
     loadEmailConfig();
     updateEmailStatus();
@@ -2397,65 +3107,200 @@ function loadSettingsPage() {
 }
 
 function initializeEmailJS() {
-    if (typeof emailjs !== 'undefined' && emailConfig.publicKey) {
-        emailjs.init(emailConfig.publicKey);
+    console.log('🔧 Inicializando EmailJS...');
+    console.log('📋 Configuração atual:', emailConfig);
+    
+    // Verificar se a biblioteca está carregada - tentar múltiplas formas
+    let emailjsLib = null;
+    
+    // Tentar emailjs global
+    if (typeof emailjs !== 'undefined') {
+        emailjsLib = emailjs;
+        console.log('✅ EmailJS encontrado como variável global');
     }
-}
-
-async function sendInviteEmail(collaboratorName, collaboratorEmail, demand) {
-    // Verificar se EmailJS está configurado
-    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
-        console.warn('EmailJS não configurado. Configure nas opções para enviar e-mails.');
-        return;
+    // Tentar window.emailjs
+    else if (typeof window !== 'undefined' && typeof window.emailjs !== 'undefined') {
+        emailjsLib = window.emailjs;
+        console.log('✅ EmailJS encontrado via window.emailjs');
+    }
+    // Tentar emailjs do módulo
+    else if (typeof window !== 'undefined' && window.emailjs) {
+        emailjsLib = window.emailjs;
+        console.log('✅ EmailJS encontrado no window');
+    }
+    else {
+        console.error('❌ EmailJS não está disponível. Verifique o carregamento da biblioteca.');
+        console.error('💡 Dica: Verifique se o script está carregado: https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js');
+        return false;
     }
     
-    if (typeof emailjs === 'undefined') {
-        console.error('Biblioteca EmailJS não carregada.');
-        return;
+    // Verificar se a configuração está completa
+    if (!emailConfig.publicKey) {
+        console.warn('⚠️ Public Key não configurada.');
+        return false;
+    }
+    
+    if (!emailConfig.serviceId) {
+        console.warn('⚠️ Service ID não configurado.');
+        return false;
+    }
+    
+    if (!emailConfig.templateId) {
+        console.warn('⚠️ Template ID não configurado.');
+        return false;
     }
     
     try {
-        // Obter informações do painel
-        const panelId = demand.panelId || currentPanelId;
-        const panel = panels.find(p => p.id === panelId);
-        const panelName = panel ? panel.name : 'Painel Principal';
+        // Inicializar EmailJS
+        emailjsLib.init(emailConfig.publicKey);
+        console.log('✅ EmailJS inicializado com sucesso!');
+        console.log('🔑 Public Key:', emailConfig.publicKey);
+        console.log('🔧 Service ID:', emailConfig.serviceId);
+        console.log('📝 Template ID:', emailConfig.templateId);
         
-        // Obter URL do site (para o link de acesso)
-        // Tentar usar URL de produção se disponível, senão usar URL atual
+        // Tornar disponível globalmente
+        if (typeof emailjs === 'undefined') {
+            window.emailjs = emailjsLib;
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Erro ao inicializar EmailJS:', error);
+        return false;
+    }
+}
+
+// Função de diagnóstico para verificar configuração do EmailJS
+function diagnoseEmailJS() {
+    console.log('🔍 Diagnóstico do EmailJS:');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    // Verificar biblioteca
+    const hasEmailJS = typeof emailjs !== 'undefined' || 
+                      (typeof window !== 'undefined' && typeof window.emailjs !== 'undefined');
+    console.log('📚 Biblioteca carregada:', hasEmailJS ? '✅ Sim' : '❌ Não');
+    
+    // Verificar configuração
+    console.log('⚙️ Configuração:');
+    console.log('  - Public Key:', emailConfig.publicKey ? '✅ Configurado' : '❌ Não configurado');
+    console.log('  - Service ID:', emailConfig.serviceId ? '✅ Configurado' : '❌ Não configurado');
+    console.log('  - Template ID:', emailConfig.templateId ? '✅ Configurado' : '❌ Não configurado');
+    
+    // Verificar valores
+    if (emailConfig.publicKey) {
+        console.log('  - Public Key valor:', emailConfig.publicKey.substring(0, 10) + '...');
+    }
+    if (emailConfig.serviceId) {
+        console.log('  - Service ID valor:', emailConfig.serviceId);
+    }
+    if (emailConfig.templateId) {
+        console.log('  - Template ID valor:', emailConfig.templateId);
+    }
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    return {
+        libraryLoaded: hasEmailJS,
+        publicKey: !!emailConfig.publicKey,
+        serviceId: !!emailConfig.serviceId,
+        templateId: !!emailConfig.templateId,
+        allConfigured: hasEmailJS && emailConfig.publicKey && emailConfig.serviceId && emailConfig.templateId
+    };
+}
+
+// Tornar função de diagnóstico disponível globalmente
+window.diagnoseEmailJS = diagnoseEmailJS;
+
+async function sendInviteEmail(collaboratorName, collaboratorEmail, demand, accessType = 'card') {
+    console.log('📧 Iniciando envio de e-mail...');
+    console.log('👤 Para:', collaboratorEmail);
+    console.log('📋 Demanda:', demand.title);
+    console.log('🔐 Tipo de acesso:', accessType);
+    
+    // Verificar se EmailJS está configurado
+    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
+        const errorMsg = 'EmailJS não configurado. Configure nas opções para enviar e-mails.';
+        console.warn('⚠️', errorMsg);
+        console.warn('📋 Configuração atual:', emailConfig);
+        showEmailNotification(errorMsg, 'error');
+        return false;
+    }
+    
+    // Verificar se a biblioteca está carregada - tentar múltiplas formas
+    let emailjsLib = null;
+    
+    if (typeof emailjs !== 'undefined') {
+        emailjsLib = emailjs;
+        console.log('✅ EmailJS encontrado como variável global');
+    } else if (typeof window !== 'undefined' && typeof window.emailjs !== 'undefined') {
+        emailjsLib = window.emailjs;
+        console.log('✅ EmailJS encontrado via window.emailjs');
+    } else {
+        const errorMsg = 'Biblioteca EmailJS não carregada. Recarregue a página ou verifique o console.';
+        console.error('❌', errorMsg);
+        console.error('💡 Execute diagnoseEmailJS() no console para mais detalhes');
+        showEmailNotification(errorMsg, 'error');
+        return false;
+    }
+    
+    // Garantir que EmailJS está inicializado
+    if (!emailConfig.publicKey) {
+        const errorMsg = 'Public Key não configurada. Configure nas opções.';
+        console.error('❌', errorMsg);
+        showEmailNotification(errorMsg, 'error');
+        return false;
+    }
+    
+    // Reinicializar se necessário
+    try {
+        emailjsLib.init(emailConfig.publicKey);
+        console.log('✅ EmailJS reinicializado');
+    } catch (initError) {
+        console.warn('⚠️ Erro ao reinicializar EmailJS (pode já estar inicializado):', initError);
+    }
+    
+    try {
+        // Usar função reutilizável para gerar link com o tipo de acesso
+        const inviteData = generatePanelInviteLink(demand.id, demand.panelId, accessType);
+        if (!inviteData) {
+            throw new Error('Não foi possível gerar o link de convite');
+        }
+        
+        const accessLink = inviteData.link;
+        const panelName = inviteData.panelName;
+        const accessTypeLabel = accessType === 'panel' ? 'Painel Completo' : 'Apenas este Card';
+        
+        // Obter URL do site para o template
+        // IMPORTANTE: Sempre usar URL de produção para links de convite
         let siteUrl = window.location.origin;
         
-        // Se estiver em localhost, tentar detectar URL de produção do localStorage ou usar uma padrão
-        if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1')) {
-            // Tentar obter URL de produção salva
+        // Se estiver em localhost, file://, ou 127.0.0.1, OBRIGAR uso de URL de produção
+        if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1') || siteUrl.startsWith('file://')) {
             const savedProductionUrl = localStorage.getItem('qualishel-production-url');
-            if (savedProductionUrl) {
-                siteUrl = savedProductionUrl;
+            if (savedProductionUrl && savedProductionUrl.trim()) {
+                siteUrl = savedProductionUrl.trim();
+                console.log('✅ Usando URL de produção para e-mail:', siteUrl);
             } else {
-                // Se não tiver salva, usar a URL atual mesmo (para desenvolvimento)
-                console.warn('⚠️ Usando URL local. Configure a URL de produção nas configurações.');
+                const errorMsg = 'URL de produção não configurada. Configure nas Configurações antes de enviar convites.';
+                console.error('❌', errorMsg);
+                showEmailNotification('⚠️ Configure a URL de produção nas Configurações antes de enviar convites!', 'error');
+                return false;
             }
         }
-        
-        const pathname = window.location.pathname;
-        // Se estiver em um subdiretório, manter o caminho base
-        if (pathname && pathname !== '/' && pathname !== '/index.html') {
-            const pathParts = pathname.split('/').filter(p => p && p !== 'index.html');
-            if (pathParts.length > 0) {
-                siteUrl += '/' + pathParts.join('/');
-            }
-        }
-        
-        // Garantir que panelId seja válido
-        const validPanelId = panelId || demand.panelId || currentPanelId;
-        
-        // Incluir panelId no link para garantir acesso ao painel correto
-        // Remover barra dupla se houver
-        siteUrl = siteUrl.replace(/\/+/g, '/').replace(/\/$/, '');
-        const accessLink = `${siteUrl}/index.html?demand=${demand.id}&panel=${validPanelId}&invite=true`;
         
         console.log('📧 Link de convite gerado:', accessLink);
+        console.log('📧 Tipo de acesso:', accessTypeLabel);
         
         // Preparar dados do template
+        // Criar mensagem com link explícito
+        const messageWithLink = `Você foi convidado para colaborar na demanda "${demand.title}" do painel "${panelName}". Tipo de acesso: ${accessTypeLabel}.
+
+Para acessar o painel, clique no link abaixo:
+${accessLink}
+
+Ou copie e cole o link no seu navegador:
+${accessLink}`;
+
         const templateParams = {
             to_name: collaboratorName,
             to_email: collaboratorEmail,
@@ -2470,25 +3315,61 @@ async function sendInviteEmail(collaboratorName, collaboratorEmail, demand) {
             demand_responsible: demand.responsible,
             panel_name: panelName,
             from_name: 'Escritório da Qualidade',
-            message: `Você foi convidado para colaborar na demanda "${demand.title}" do painel "${panelName}".`,
+            message: messageWithLink,
             access_link: accessLink,
-            site_url: siteUrl
+            access_type: accessTypeLabel,
+            site_url: siteUrl,
+            // Adicionar variáveis adicionais para facilitar uso no template
+            link_text: 'Acessar Qualishel',
+            link_url: accessLink
         };
         
+        console.log('📤 Enviando e-mail via EmailJS...');
+        console.log('🔧 Service ID:', emailConfig.serviceId);
+        console.log('📝 Template ID:', emailConfig.templateId);
+        console.log('📋 Parâmetros do template:', templateParams);
+        
+        // Verificar se o método send existe
+        if (typeof emailjsLib.send !== 'function') {
+            throw new Error('Método emailjs.send não está disponível. Verifique a versão da biblioteca EmailJS.');
+        }
+        
         // Enviar e-mail
-        await emailjs.send(
+        console.log('📧 Chamando emailjs.send...');
+        const response = await emailjsLib.send(
             emailConfig.serviceId,
             emailConfig.templateId,
             templateParams
         );
         
-        console.log('E-mail enviado com sucesso para', collaboratorEmail);
+        console.log('✅ E-mail enviado com sucesso!');
+        console.log('📧 Resposta do EmailJS:', response);
+        console.log('👤 Para:', collaboratorEmail);
+        
         // Mostrar notificação visual
-        showEmailNotification('E-mail enviado com sucesso!', 'success');
+        showEmailNotification(`E-mail enviado com sucesso para ${collaboratorEmail}!`, 'success');
+        return true;
         
     } catch (error) {
-        console.error('Erro ao enviar e-mail:', error);
-        showEmailNotification('Erro ao enviar e-mail. Verifique a configuração.', 'error');
+        console.error('❌ Erro ao enviar e-mail:', error);
+        console.error('📋 Detalhes do erro:', {
+            message: error.message,
+            text: error.text,
+            status: error.status,
+            config: emailConfig
+        });
+        
+        let errorMessage = 'Erro ao enviar e-mail. ';
+        if (error.text) {
+            errorMessage += error.text;
+        } else if (error.message) {
+            errorMessage += error.message;
+        } else {
+            errorMessage += 'Verifique a configuração do EmailJS.';
+        }
+        
+        showEmailNotification(errorMessage, 'error');
+        return false;
     }
 }
 
@@ -3259,10 +4140,14 @@ function renderUrgentList() {
 
 let filteredDemands = [];
 
-function updateReports() {
-    loadDemands(); // Recarregar dados
+async function updateReports() {
+    // Recarregar dados e aguardar
+    await loadDemands();
     populateResponsibleFilter();
-    applyFilters();
+    // Aguardar um pouco para garantir que os dados foram processados
+    setTimeout(() => {
+        applyFilters();
+    }, 100);
 }
 
 function populateResponsibleFilter() {
@@ -3289,17 +4174,25 @@ function applyFilters() {
         const selectedPanelId = reportPanelSelector?.value ? parseInt(reportPanelSelector.value) : null;
         if (selectedPanelId) {
             selectedPanelIds = [selectedPanelId];
+        } else {
+            // Se nenhum painel selecionado no modo single, usar todos
+            selectedPanelIds = null;
         }
     } else if (selectionMode === 'multiple') {
         // Múltiplos painéis
         const checkboxes = document.querySelectorAll('#panel-checkboxes input[type="checkbox"]:checked');
         selectedPanelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        // Se nenhum checkbox marcado, usar todos
+        if (selectedPanelIds.length === 0) {
+            selectedPanelIds = null;
+        }
     }
     
-    // Filtrar por painéis selecionados
-    let filteredDemands = selectedPanelIds === null 
-        ? demands 
-        : demands.filter(d => selectedPanelIds.includes(d.panelId));
+    // Filtrar por painéis selecionados - ATUALIZAR VARIÁVEL GLOBAL
+    // Se selectedPanelIds é null, mostrar todas as demandas
+    filteredDemands = selectedPanelIds === null 
+        ? [...demands] // Criar cópia do array
+        : demands.filter(d => d.panelId && selectedPanelIds.includes(d.panelId));
     
     // Filtro de status
     const statusFilter = document.getElementById('filter-status')?.value;
@@ -3345,9 +4238,61 @@ function applyFilters() {
         });
     }
     
+    console.log('📊 Relatório: Demandas filtradas:', filteredDemands.length);
+    console.log('📊 Total de demandas:', demands.length);
+    
     updateReportSummary();
     updateReportTable();
     renderReportCharts();
+}
+
+// Funções auxiliares para estatísticas descritivas
+function calculateMean(numbers) {
+    if (numbers.length === 0) return null;
+    const sum = numbers.reduce((a, b) => a + b, 0);
+    return sum / numbers.length;
+}
+
+function calculateMedian(numbers) {
+    if (numbers.length === 0) return null;
+    const sorted = [...numbers].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 
+        ? (sorted[mid - 1] + sorted[mid]) / 2 
+        : sorted[mid];
+}
+
+function calculateStandardDeviation(numbers) {
+    if (numbers.length === 0) return null;
+    const mean = calculateMean(numbers);
+    const squaredDiffs = numbers.map(n => Math.pow(n - mean, 2));
+    const avgSquaredDiff = calculateMean(squaredDiffs);
+    return Math.sqrt(avgSquaredDiff);
+}
+
+function calculateQuartile(numbers, quartile) {
+    if (numbers.length === 0) return null;
+    const sorted = [...numbers].sort((a, b) => a - b);
+    const index = Math.floor(sorted.length * quartile);
+    return sorted[index];
+}
+
+function calculateMin(numbers) {
+    return numbers.length > 0 ? Math.min(...numbers) : null;
+}
+
+function calculateMax(numbers) {
+    return numbers.length > 0 ? Math.max(...numbers) : null;
+}
+
+function formatNumber(value, decimals = 1) {
+    if (value === null || value === undefined || isNaN(value)) return '-';
+    return value.toFixed(decimals);
+}
+
+function formatDays(value) {
+    if (value === null || value === undefined || isNaN(value)) return '-';
+    return Math.round(value) + ' dia(s)';
 }
 
 function updateReportSummary() {
@@ -3384,32 +4329,108 @@ function updateReportSummary() {
         generationDate.textContent = `Gerado em: ${dateStr} às ${timeStr}`;
     }
     
+    // ========== ESTATÍSTICAS BÁSICAS ==========
     const total = filteredDemands.length;
     const concluidas = filteredDemands.filter(d => d.status === 'concluido').length;
+    const emAndamento = filteredDemands.filter(d => d.status === 'andamento').length;
+    const pendentes = filteredDemands.filter(d => d.status === 'pendente').length;
     const taxa = total > 0 ? Math.round((concluidas / total) * 100) : 0;
     
-    // Calcular tempo médio
-    const concluidasWithDate = filteredDemands.filter(d => d.status === 'concluido');
-    let avgTime = '-';
-    if (concluidasWithDate.length > 0) {
-        // Para simplificar, vamos usar a data de criação como referência
-        avgTime = 'N/A';
-    }
+    // ========== ESTATÍSTICAS DE TEMPO ==========
+    const now = Date.now();
+    const timesOpen = filteredDemands.map(d => {
+        const created = new Date(d.createdAt).getTime();
+        return Math.floor((now - created) / (1000 * 60 * 60 * 24)); // dias
+    });
     
-    // Demanda mais antiga
+    // Tempos de resolução (apenas para demandas concluídas)
+    const resolutionTimes = filteredDemands
+        .filter(d => d.status === 'concluido' && d.updatedAt)
+        .map(d => {
+            const created = new Date(d.createdAt).getTime();
+            const updated = new Date(d.updatedAt).getTime();
+            return Math.floor((updated - created) / (1000 * 60 * 60 * 24)); // dias
+        });
+    
+    // Calcular estatísticas descritivas de tempo aberto
+    const avgTime = calculateMean(timesOpen);
+    const medianTime = calculateMedian(timesOpen);
+    const stdDev = calculateStandardDeviation(timesOpen);
+    const minTime = calculateMin(timesOpen);
+    const maxTime = calculateMax(timesOpen);
+    const q1 = calculateQuartile(timesOpen, 0.25);
+    const q3 = calculateQuartile(timesOpen, 0.75);
+    const range = maxTime !== null && minTime !== null ? maxTime - minTime : null;
+    
+    // Tempo médio de resolução
+    const avgResolution = calculateMean(resolutionTimes);
+    
+    // ========== ESTATÍSTICAS DE DATA ==========
     let oldest = '-';
+    let newest = '-';
     if (filteredDemands.length > 0) {
         const oldestDemand = filteredDemands.reduce((oldest, current) => {
             return new Date(current.createdAt) < new Date(oldest.createdAt) ? current : oldest;
         });
-        const date = new Date(oldestDemand.createdAt);
-        oldest = date.toLocaleDateString('pt-BR');
+        const newestDemand = filteredDemands.reduce((newest, current) => {
+            return new Date(current.createdAt) > new Date(newest.createdAt) ? current : newest;
+        });
+        oldest = new Date(oldestDemand.createdAt).toLocaleDateString('pt-BR');
+        newest = new Date(newestDemand.createdAt).toLocaleDateString('pt-BR');
     }
     
-    document.getElementById('report-total').textContent = total;
-    document.getElementById('report-avg-time').textContent = avgTime;
-    document.getElementById('report-oldest').textContent = oldest;
-    document.getElementById('report-completion').textContent = taxa + '%';
+    // ========== TAXA DE CONCLUSÃO ÚLTIMOS 30 DIAS ==========
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentDemands = filteredDemands.filter(d => {
+        const created = new Date(d.createdAt);
+        return created >= thirtyDaysAgo;
+    });
+    const recentCompleted = recentDemands.filter(d => d.status === 'concluido').length;
+    const completion30d = recentDemands.length > 0 
+        ? Math.round((recentCompleted / recentDemands.length) * 100) 
+        : 0;
+    
+    // ========== DISTRIBUIÇÃO POR PRIORIDADE ==========
+    const priorityUrgent = filteredDemands.filter(d => d.priority === 'urgente').length;
+    const priorityHigh = filteredDemands.filter(d => d.priority === 'alta').length;
+    const priorityMedium = filteredDemands.filter(d => d.priority === 'media').length;
+    const priorityLow = filteredDemands.filter(d => d.priority === 'baixa').length;
+    
+    // ========== ATUALIZAR ELEMENTOS DO DOM ==========
+    // Função auxiliar para atualizar elemento de forma segura
+    const updateElement = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+    };
+    
+    // Estatísticas Básicas
+    updateElement('report-total', total);
+    updateElement('report-completion', taxa + '%');
+    updateElement('report-in-progress', emAndamento);
+    updateElement('report-pending', pendentes);
+    
+    // Estatísticas de Tempo
+    updateElement('report-avg-time', formatDays(avgTime));
+    updateElement('report-median-time', formatDays(medianTime));
+    updateElement('report-std-dev', formatDays(stdDev));
+    updateElement('report-min-time', formatDays(minTime));
+    updateElement('report-max-time', formatDays(maxTime));
+    updateElement('report-q1', formatDays(q1));
+    updateElement('report-q3', formatDays(q3));
+    updateElement('report-range', formatDays(range));
+    
+    // Distribuição e Tendências
+    updateElement('report-oldest', oldest);
+    updateElement('report-newest', newest);
+    updateElement('report-avg-resolution', formatDays(avgResolution));
+    updateElement('report-completion-30d', completion30d + '%');
+    
+    // Distribuição por Prioridade
+    updateElement('report-priority-urgent', priorityUrgent);
+    updateElement('report-priority-high', priorityHigh);
+    updateElement('report-priority-medium', priorityMedium);
+    updateElement('report-priority-low', priorityLow);
 }
 
 function updateReportTable() {

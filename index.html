@@ -14,6 +14,12 @@
     <script type="module">
         (async function() {
             try {
+                // Verificar se Firebase já foi inicializado
+                if (window.db) {
+                    console.log('ℹ️ Firebase já inicializado, pulando inicialização duplicada.');
+                    return;
+                }
+                
                 // Configuração do Firebase
                 const firebaseConfig = {
                     apiKey: "AIzaSyCMFvZlVTZUUGCt8cAIeKvGiQiNM6dPyLc",
@@ -25,21 +31,45 @@
                 };
                 
                 // Inicializar Firebase
-                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+                const { initializeApp, getApps } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
                 const { getFirestore } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
                 
-                const app = initializeApp(firebaseConfig);
+                // Verificar se já existe um app inicializado
+                let app;
+                const existingApps = getApps();
+                if (existingApps.length > 0) {
+                    app = existingApps[0];
+                    console.log('ℹ️ Usando app Firebase existente');
+                } else {
+                    app = initializeApp(firebaseConfig);
+                    console.log('✅ Firebase inicializado com sucesso!');
+                }
+                
                 const db = getFirestore(app);
                 window.db = db;
-                
-                console.log('✅ Firebase inicializado com sucesso!');
             } catch (error) {
-                console.error('❌ Erro ao inicializar Firebase:', error);
+                // Se for erro de app duplicado, tentar usar o app existente
+                if (error.code === 'app/duplicate-app') {
+                    console.log('ℹ️ Firebase já estava inicializado, usando instância existente.');
+                    try {
+                        const { getApps } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+                        const { getFirestore } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                        const apps = getApps();
+                        if (apps.length > 0) {
+                            window.db = getFirestore(apps[0]);
+                        }
+                    } catch (e) {
+                        console.error('❌ Erro ao recuperar instância Firebase:', e);
+                    }
+                } else {
+                    console.error('❌ Erro ao inicializar Firebase:', error);
+                }
             }
         })();
     </script>
     <!-- Tentar carregar firebase-config.js também (se existir e funcionar) -->
-    <script type="module" src="firebase-config.js" onerror="console.warn('firebase-config.js não carregou, mas Firebase já foi inicializado inline')"></script>
+    <!-- Nota: Este arquivo é opcional, pois Firebase já foi inicializado inline acima -->
+    <script type="module" src="firebase-config.js" onerror="console.log('ℹ️ firebase-config.js não carregou (normal em ambiente local). Firebase já inicializado inline.')"></script>
     <!-- Serviço Firebase -->
     <script src="firebase-service.js"></script>
 </head>
@@ -337,22 +367,112 @@
                     <div id="report-period-info" class="report-period-info"></div>
                     <div id="report-generation-date" class="report-generation-date"></div>
                 </div>
-                <div class="summary-grid">
-                    <div class="summary-item">
-                        <span class="summary-label">Total de Demandas:</span>
-                        <span class="summary-value" id="report-total">0</span>
+                
+                <!-- Estatísticas Básicas -->
+                <div class="summary-section">
+                    <h4>📊 Estatísticas Básicas</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Total de Demandas:</span>
+                            <span class="summary-value" id="report-total">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Taxa de Conclusão:</span>
+                            <span class="summary-value" id="report-completion">0%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Em Andamento:</span>
+                            <span class="summary-value" id="report-in-progress">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Pendentes:</span>
+                            <span class="summary-value" id="report-pending">0</span>
+                        </div>
                     </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Média de Tempo:</span>
-                        <span class="summary-value" id="report-avg-time">-</span>
+                </div>
+
+                <!-- Estatísticas Descritivas de Tempo -->
+                <div class="summary-section">
+                    <h4>⏱️ Estatísticas de Tempo (Dias)</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Média:</span>
+                            <span class="summary-value" id="report-avg-time">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Mediana:</span>
+                            <span class="summary-value" id="report-median-time">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Desvio Padrão:</span>
+                            <span class="summary-value" id="report-std-dev">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Tempo Mínimo:</span>
+                            <span class="summary-value" id="report-min-time">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Tempo Máximo:</span>
+                            <span class="summary-value" id="report-max-time">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Q1 (25%):</span>
+                            <span class="summary-value" id="report-q1">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Q3 (75%):</span>
+                            <span class="summary-value" id="report-q3">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Amplitude:</span>
+                            <span class="summary-value" id="report-range">-</span>
+                        </div>
                     </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Demanda Mais Antiga:</span>
-                        <span class="summary-value" id="report-oldest">-</span>
+                </div>
+
+                <!-- Estatísticas de Distribuição -->
+                <div class="summary-section">
+                    <h4>📈 Distribuição e Tendências</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Demanda Mais Antiga:</span>
+                            <span class="summary-value" id="report-oldest">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Demanda Mais Recente:</span>
+                            <span class="summary-value" id="report-newest">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Tempo Médio de Resolução:</span>
+                            <span class="summary-value" id="report-avg-resolution">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Taxa de Conclusão (Últimos 30 dias):</span>
+                            <span class="summary-value" id="report-completion-30d">-</span>
+                        </div>
                     </div>
-                    <div class="summary-item">
-                        <span class="summary-label">Taxa de Conclusão:</span>
-                        <span class="summary-value" id="report-completion">0%</span>
+                </div>
+
+                <!-- Estatísticas por Prioridade -->
+                <div class="summary-section">
+                    <h4>🎯 Distribuição por Prioridade</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Urgente:</span>
+                            <span class="summary-value" id="report-priority-urgent">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Alta:</span>
+                            <span class="summary-value" id="report-priority-high">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Média:</span>
+                            <span class="summary-value" id="report-priority-medium">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Baixa:</span>
+                            <span class="summary-value" id="report-priority-low">0</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -396,6 +516,46 @@
         <section id="configuracoes-page" class="page">
             <div class="page-header">
                 <h2>Configurações</h2>
+            </div>
+
+            <!-- Configuração de URL de Produção -->
+            <div class="settings-section">
+                <div class="settings-header">
+                    <h3>🌐 URL de Produção</h3>
+                    <span class="settings-status" id="production-url-status">Não configurado</span>
+                </div>
+                
+                <div class="settings-content">
+                    <div class="settings-info">
+                        <p>Configure a URL de produção do seu site para que os links de convite funcionem corretamente. Esta URL será usada em todos os convites enviados por e-mail.</p>
+                        <div class="info-box" style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-top: 1rem; border-radius: 6px;">
+                            <strong>⚠️ Importante:</strong> Se você está testando localmente (abrindo o arquivo HTML diretamente), você <strong>DEVE</strong> configurar a URL de produção aqui, caso contrário os links de convite não funcionarão.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="production-url-input">
+                            URL de Produção
+                            <span class="required">*</span>
+                        </label>
+                        <input type="url" 
+                               id="production-url-input" 
+                               placeholder="Ex: https://shel-quali.vercel.app" 
+                               class="settings-input">
+                        <small class="form-help">
+                            Digite a URL completa do seu site em produção (ex: https://shel-quali.vercel.app)
+                        </small>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button type="button" class="btn-primary" id="save-production-url-btn">
+                            💾 Salvar URL de Produção
+                        </button>
+                        <button type="button" class="btn-secondary" id="test-production-url-btn">
+                            🔗 Testar URL
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Configuração de E-mail -->
@@ -448,8 +608,12 @@
                                         <code>{{demand_responsible}}</code> - Responsável<br>
                                         <code>{{panel_name}}</code> - <strong>Nome do painel/projeto</strong> ⭐<br>
                                         <code>{{message}}</code> - Mensagem personalizada<br>
-                                        <code>{{access_link}}</code> - Link direto para acessar a demanda (inclui panelId)<br>
-                                        <code>{{site_url}}</code> - URL do site Qualishel
+                                        <code>{{access_link}}</code> - <strong>Link direto para acessar a demanda</strong> (inclui panelId e tipo de acesso) ⭐<strong>OBRIGATÓRIO</strong><br>
+                                        <code>{{link_url}}</code> - Mesmo que access_link (alternativa)<br>
+                                        <code>{{link_text}}</code> - Texto do botão: "Acessar Qualishel"<br>
+                                        <code>{{access_type}}</code> - Tipo de acesso: "Painel Completo" ou "Apenas este Card" ⭐<br>
+                                        <code>{{site_url}}</code> - URL do site Qualishel<br>
+                                        <code>{{message}}</code> - Mensagem completa com link incluído
                                     </div>
                                     <div class="template-example" style="background: #f0f9ff; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid #2563eb;">
                                         <strong>📧 Exemplo de Template de E-mail:</strong>
@@ -460,13 +624,18 @@
                                             <p><strong>Demanda:</strong> {{demand_title}}</p>
                                             <p><strong>Status:</strong> {{demand_status}} | <strong>Prioridade:</strong> {{demand_priority}}</p>
                                             <p><strong>Responsável:</strong> {{demand_responsible}}</p>
+                                            <p><strong>Tipo de Acesso:</strong> {{access_type}}</p>
                                             <p style="margin-top: 1rem;">
-                                                <a href="{{access_link}}" style="background: #2563eb; color: white; padding: 0.75rem 1.5rem; text-decoration: none; border-radius: 6px; display: inline-block;">
-                                                    Acessar Qualishel →
+                                                <a href="{{access_link}}" style="background: #2563eb; color: white; padding: 0.75rem 1.5rem; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+                                                    🔗 Acessar Qualishel →
                                                 </a>
                                             </p>
+                                            <p style="margin-top: 1rem; padding: 1rem; background: #f1f5f9; border-radius: 6px; border-left: 4px solid #2563eb;">
+                                                <strong>Link de acesso:</strong><br>
+                                                <a href="{{access_link}}" style="color: #2563eb; word-break: break-all;">{{access_link}}</a>
+                                            </p>
                                             <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #64748b;">
-                                                Ou copie e cole este link: {{access_link}}
+                                                Se o botão não funcionar, copie e cole o link acima no seu navegador.
                                             </p>
                                         </div>
                                     </div>
@@ -678,6 +847,16 @@
                     <h4>Pessoas Disponíveis</h4>
                     <div id="available-people-list" class="collaborators-list">
                         <!-- Lista de pessoas disponíveis será preenchida aqui -->
+                    </div>
+                </div>
+
+                <div class="collaborator-section invite-link-section">
+                    <h4>🔗 Compartilhar Link de Convite</h4>
+                    <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Escolha o tipo de acesso que o convidado terá ao compartilhar o link.
+                    </p>
+                    <div id="invite-link-section">
+                        <!-- Seção de link de convite será preenchida aqui -->
                     </div>
                 </div>
 
