@@ -99,8 +99,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (typeof window.firebaseService !== 'undefined') {
             window.firebaseService.removeAllListeners();
         }
+        // Atualizar exibição do nome do usuário
+        updateUserNameDisplay();
     }
-    // Salvar usuário atual na sessão
+    // Salvar usuário atual na sessão e atualizar exibição
     if (currentUser) {
         sessionStorage.setItem('qualishel_last_user', currentUser);
     }
@@ -178,6 +180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         fixCardsWithoutPanelId();
         renderPanelSelector();
         setupEventListeners();
+        updateUserNameDisplay();
         renderKanban();
         updateCardCounts();
         setupReportListeners();
@@ -522,6 +525,23 @@ window.closeWelcomeModalAndFocusDemand = function(demandId) {
         focusOnDemand();
     }, 300);
 };
+
+// Atualizar exibição do nome do usuário no Kanban
+function updateUserNameDisplay() {
+    const userNameElement = document.getElementById('kanban-user-name');
+    if (userNameElement) {
+        const currentUser = localStorage.getItem('qualishel_current_user');
+        if (currentUser) {
+            // Buscar nome completo do usuário se disponível
+            const users = JSON.parse(localStorage.getItem('qualishel_users') || '[]');
+            const user = users.find(u => u.username === currentUser);
+            const displayName = user && user.name ? user.name : currentUser;
+            userNameElement.textContent = displayName;
+        } else {
+            userNameElement.textContent = 'Usuário não identificado';
+        }
+    }
+}
 
 // Event Listeners
 // Função para fazer logout

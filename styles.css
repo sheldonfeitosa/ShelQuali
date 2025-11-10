@@ -831,6 +831,12 @@ select#panel-selector {
     flex-wrap: wrap;
 }
 
+.page-title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
 .page-header h2 {
     font-size: 2.25rem;
     font-weight: 800;
@@ -839,6 +845,14 @@ select#panel-selector {
     background: none;
     -webkit-background-clip: unset;
     -webkit-text-fill-color: unset;
+    margin: 0;
+}
+
+.user-name-display {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    opacity: 0.8;
 }
 
 .page-subtitle {
