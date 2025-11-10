@@ -6,6 +6,9 @@ let demands = [];
 let demandIdCounter = 1;
 let availablePeople = []; // Lista de pessoas disponíveis para colaboração
 let isUpdatingFromRealtime = false; // Flag para evitar loops na sincronização
+let googleCalendarToken = null; // Token de acesso do Google Calendar
+let googleCalendarClient = null; // Cliente OAuth do Google
+let googleCalendarClientId = null; // Client ID do Google Calendar
 
 // Elementos DOM
 const addDemandBtn = document.getElementById('add-demand-btn');
@@ -81,9 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const isInvite = urlParams.get('invite') === 'true';
     
-    // Se não for convite e não estiver autenticado, redirecionar para login
+    // Se não for convite e não estiver autenticado, redirecionar para homepage
     if (!isInvite && localStorage.getItem('qualishel_authenticated') !== 'true') {
-        window.location.href = 'login.html';
+        window.location.href = 'homepage.html';
         return;
     }
     
@@ -511,7 +514,7 @@ function handleLogout() {
     if (confirm('Tem certeza que deseja sair?')) {
         localStorage.removeItem('qualishel_authenticated');
         localStorage.removeItem('qualishel_current_user');
-        window.location.href = 'login.html';
+        window.location.href = 'homepage.html';
     }
 }
 
@@ -519,7 +522,10 @@ function setupEventListeners() {
     // Botão de logout
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', handleLogout);
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleLogout();
+        });
     }
     // Modal de Demanda
     addDemandBtn.addEventListener('click', () => openModal());
@@ -562,6 +568,11 @@ function setupEventListeners() {
         testEmailBtn.addEventListener('click', testEmailSend);
     }
 
+    const testInviteLinkBtn = document.getElementById('test-invite-link-btn');
+    if (testInviteLinkBtn) {
+        testInviteLinkBtn.addEventListener('click', testInviteLink);
+    }
+
     // Configuração de URL de Produção
     const saveProductionUrlBtn = document.getElementById('save-production-url-btn');
     if (saveProductionUrlBtn) {
@@ -577,6 +588,22 @@ function setupEventListeners() {
     const saveUserNameBtn = document.getElementById('save-user-name-btn');
     if (saveUserNameBtn) {
         saveUserNameBtn.addEventListener('click', saveUserName);
+    }
+
+    // Configuração do Google Calendar
+    const connectGoogleCalendarBtn = document.getElementById('connect-google-calendar-btn');
+    if (connectGoogleCalendarBtn) {
+        connectGoogleCalendarBtn.addEventListener('click', connectGoogleCalendar);
+    }
+
+    const disconnectGoogleCalendarBtn = document.getElementById('disconnect-google-calendar-btn');
+    if (disconnectGoogleCalendarBtn) {
+        disconnectGoogleCalendarBtn.addEventListener('click', disconnectGoogleCalendar);
+    }
+
+    const saveGoogleCalendarClientIdBtn = document.getElementById('save-google-calendar-client-id-btn');
+    if (saveGoogleCalendarClientIdBtn) {
+        saveGoogleCalendarClientIdBtn.addEventListener('click', saveGoogleCalendarClientId);
     }
 
     // Modal de Tarefas e Chat
@@ -618,6 +645,9 @@ function setupEventListeners() {
     // Painéis
     if (panelSelector) {
         panelSelector.addEventListener('change', handlePanelChange);
+        
+        // Inicializar dropdown customizado
+        initCustomPanelDropdown();
     }
     if (newPanelBtn) {
         newPanelBtn.addEventListener('click', () => openPanelFormModal());
@@ -652,7 +682,7 @@ function setupEventListeners() {
     }
 
     // Formulário
-    demandForm.addEventListener('submit', handleFormSubmit);
+    demandForm.onsubmit = handleFormSubmit;
 
     // Navegação
     navLinks.forEach(link => {
@@ -671,6 +701,12 @@ function setupEventListeners() {
 function openModal() {
     demandModal.classList.add('active');
     document.body.style.overflow = 'hidden';
+    // Garantir que o título e botão estão corretos para criar nova demanda
+    document.querySelector('.modal-header h3').textContent = 'Nova Demanda';
+    const submitBtn = document.getElementById('submit-demand-btn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Criar Demanda';
+    }
 }
 
 function closeModal() {
@@ -678,6 +714,11 @@ function closeModal() {
     document.body.style.overflow = '';
     demandForm.reset();
     document.querySelector('.modal-header h3').textContent = 'Nova Demanda';
+    // Restaurar texto do botão para criar nova demanda
+    const submitBtn = document.getElementById('submit-demand-btn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Criar Demanda';
+    }
     // Restaurar comportamento padrão do formulário
     demandForm.onsubmit = handleFormSubmit;
 }
@@ -693,6 +734,9 @@ function switchPage(pageName) {
     document.querySelector(`[data-page="${pageName}"]`).classList.add('active');
 
     // Atualizar conteúdo quando mudar de página
+    if (pageName === 'arquivos') {
+        renderArchives();
+    }
     if (pageName === 'dashboard') {
         updateDashboard();
     } else if (pageName === 'relatorios') {
@@ -729,8 +773,21 @@ function handleFormSubmit(e) {
         createdAt: new Date().toISOString(),
         collaborators: [],
         tasks: [],
-        chat: []
+        chat: [],
+        history: [] // Histórico de mudanças para rastreabilidade
     };
+    
+    // Adicionar entrada inicial no histórico
+    demand.history.push({
+        action: 'created',
+        timestamp: new Date().toISOString(),
+        user: localStorage.getItem('qualishel_current_user') || 'Sistema',
+        details: {
+            title: demand.title,
+            status: demand.status,
+            priority: demand.priority
+        }
+    });
 
     demands.push(demand);
     saveDemands();
@@ -739,7 +796,6 @@ function handleFormSubmit(e) {
     updateDashboard(); // Atualizar dashboard se estiver visível
     closeModal();
 }
-
 // Renderização do Kanban
 // Função para verificar se usuário pode ver uma demanda específica
 function canUserViewDemand(demandId) {
@@ -784,8 +840,8 @@ function renderKanban() {
         const column = document.getElementById(`column-${status}`);
         column.innerHTML = '';
         
-        // Filtrar demandas do painel atual
-        let demandsInColumn = demands.filter(d => d.status === status && d.panelId === currentPanelId);
+        // Filtrar demandas do painel atual (excluir arquivadas)
+        let demandsInColumn = demands.filter(d => d.status === status && d.panelId === currentPanelId && !d.archived);
         
         // Aplicar restrições de acesso
         if (currentUserAccessType === 'card') {
@@ -997,9 +1053,6 @@ function createCard(demand) {
             </div>
             ${summaryBannerHtml}
         </div>
-        <button class="card-delete-btn" onclick="deleteDemand(${demand.id})" aria-label="Excluir demanda">
-            🗑️
-        </button>
         <div class="card-content">
             <div class="card-actions">
                 <button class="card-action-btn" onclick="editDemand(${demand.id})" title="Editar">
@@ -1007,6 +1060,9 @@ function createCard(demand) {
                 </button>
                 <button class="card-action-btn" onclick="manageCollaborators(${demand.id})" title="Gerenciar Colaboradores">
                     👥
+                </button>
+                <button class="card-action-btn" onclick="deleteDemand(${demand.id})" title="Arquivar">
+                    📦
                 </button>
             </div>
             <div class="card-header">
@@ -1155,14 +1211,34 @@ function handleDrop(e) {
         // Atualizar status da demanda
         const demand = demands.find(d => d.id === demandId);
         if (demand) {
+            // Garantir que o histórico existe
+            if (!demand.history) {
+                demand.history = [];
+            }
+            
             // Se está mudando para "em andamento" e não tinha prazo definido, abrir modal
             if (newStatus === 'andamento' && oldStatus !== 'andamento' && !demand.deadline) {
                 pendingDemandId = demandId;
                 // Atualizar status e renderizar para que o card apareça na coluna correta
                 demand.status = newStatus;
+                
+                // Adicionar ao histórico
+                if (oldStatus !== newStatus) {
+                    demand.history.push({
+                        action: 'status_changed',
+                        timestamp: new Date().toISOString(),
+                        user: localStorage.getItem('qualishel_current_user') || 'Sistema',
+                        changes: [{ field: 'status', from: oldStatus, to: newStatus }]
+                    });
+                }
+                
                 saveDemands();
                 renderKanban();
                 updateCardCounts();
+                // Notificar colaboradores sobre mudança de status
+                if (oldStatus !== newStatus) {
+                    notifyCollaboratorsAboutUpdate(demand, 'status_changed', { newStatus: newStatus });
+                }
                 // Abrir modal após um pequeno delay para visualização
                 setTimeout(() => {
                     openDeadlineModal();
@@ -1170,10 +1246,25 @@ function handleDrop(e) {
             } else {
                 // Se não precisa de prazo, atualizar normalmente
                 demand.status = newStatus;
+                
+                // Adicionar ao histórico apenas se houve mudança
+                if (oldStatus !== newStatus) {
+                    demand.history.push({
+                        action: 'status_changed',
+                        timestamp: new Date().toISOString(),
+                        user: localStorage.getItem('qualishel_current_user') || 'Sistema',
+                        changes: [{ field: 'status', from: oldStatus, to: newStatus }]
+                    });
+                }
+                
                 saveDemands();
                 renderKanban();
                 updateCardCounts();
                 updateDashboard();
+                // Notificar colaboradores sobre mudança de status
+                if (oldStatus !== newStatus) {
+                    notifyCollaboratorsAboutUpdate(demand, 'status_changed', { newStatus: newStatus });
+                }
             }
         }
     }
@@ -1187,44 +1278,125 @@ function editDemand(id) {
     const demand = demands.find(d => d.id === id);
     if (!demand) return;
 
+    // Garantir que o histórico existe
+    if (!demand.history) {
+        demand.history = [];
+    }
+
+    // Abrir o modal primeiro
+    demandModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Alterar título do modal e texto do botão para edição ANTES de preencher os campos
+    document.querySelector('.modal-header h3').textContent = 'Editar Demanda';
+    const submitBtn = document.getElementById('submit-demand-btn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Salvar';
+    }
+
+    // Preencher os campos do formulário
     document.getElementById('demand-title').value = demand.title;
     document.getElementById('demand-description').value = demand.description;
     document.getElementById('demand-priority').value = demand.priority;
     document.getElementById('demand-responsible').value = demand.responsible;
     document.getElementById('demand-status').value = demand.status;
 
+    // Armazenar ID da demanda sendo editada para garantir que não crie nova
+    let editingDemandId = id;
+
     // Alterar o comportamento do formulário para editar
     demandForm.onsubmit = (e) => {
         e.preventDefault();
         
-        demand.title = document.getElementById('demand-title').value;
-        demand.description = document.getElementById('demand-description').value;
-        demand.priority = document.getElementById('demand-priority').value;
-        demand.responsible = document.getElementById('demand-responsible').value;
-        demand.status = document.getElementById('demand-status').value;
+        // Garantir que estamos editando a demanda correta
+        const demandToEdit = demands.find(d => d.id === editingDemandId);
+        if (!demandToEdit) {
+            console.error('Demanda não encontrada para edição');
+            return;
+        }
+        
+        const oldStatus = demandToEdit.status;
+        const oldPriority = demandToEdit.priority;
+        const oldTitle = demandToEdit.title;
+        const oldResponsible = demandToEdit.responsible;
+        
+        // Atualizar apenas o objeto existente (não criar novo)
+        demandToEdit.title = document.getElementById('demand-title').value;
+        demandToEdit.description = document.getElementById('demand-description').value;
+        demandToEdit.priority = document.getElementById('demand-priority').value;
+        demandToEdit.responsible = document.getElementById('demand-responsible').value;
+        demandToEdit.status = document.getElementById('demand-status').value;
+        
+        // Adicionar ao histórico de mudanças
+        const changes = [];
+        if (oldTitle !== demandToEdit.title) {
+            changes.push({ field: 'title', from: oldTitle, to: demandToEdit.title });
+        }
+        if (oldStatus !== demandToEdit.status) {
+            changes.push({ field: 'status', from: oldStatus, to: demandToEdit.status });
+        }
+        if (oldPriority !== demandToEdit.priority) {
+            changes.push({ field: 'priority', from: oldPriority, to: demandToEdit.priority });
+        }
+        if (oldResponsible !== demandToEdit.responsible) {
+            changes.push({ field: 'responsible', from: oldResponsible, to: demandToEdit.responsible });
+        }
+        
+        if (changes.length > 0) {
+            demandToEdit.history.push({
+                action: 'updated',
+                timestamp: new Date().toISOString(),
+                user: localStorage.getItem('qualishel_current_user') || 'Sistema',
+                changes: changes
+            });
+        }
 
         saveDemands();
         renderKanban();
         updateCardCounts();
         updateDashboard(); // Atualizar dashboard se estiver visível
+        
+        // Notificar colaboradores sobre mudanças
+        if (oldStatus !== demandToEdit.status) {
+            notifyCollaboratorsAboutUpdate(demandToEdit, 'status_changed', { newStatus: demandToEdit.status });
+        }
+        if (oldPriority !== demandToEdit.priority) {
+            notifyCollaboratorsAboutUpdate(demandToEdit, 'priority_changed', { newPriority: demandToEdit.priority });
+        }
+        
         closeModal();
         
         // Restaurar comportamento padrão
         demandForm.onsubmit = handleFormSubmit;
+        editingDemandId = null;
     };
-
-    document.querySelector('.modal-header h3').textContent = 'Editar Demanda';
-    openModal();
 }
 
-// Excluir Demanda
+// Arquivar Demanda (ao invés de excluir)
 function deleteDemand(id) {
-    if (confirm('Tem certeza que deseja excluir esta demanda?')) {
-        demands = demands.filter(d => d.id !== id);
-        saveDemands();
-        renderKanban();
-        updateCardCounts();
-        updateDashboard(); // Atualizar dashboard se estiver visível
+    if (confirm('Tem certeza que deseja arquivar esta demanda? Ela será movida para o arquivo e poderá ser restaurada depois.')) {
+        const demand = demands.find(d => d.id === id);
+        if (demand) {
+            // Garantir que o histórico existe
+            if (!demand.history) {
+                demand.history = [];
+            }
+            
+            demand.archived = true;
+            demand.archivedAt = new Date().toISOString();
+            
+            // Adicionar ao histórico
+            demand.history.push({
+                action: 'archived',
+                timestamp: new Date().toISOString(),
+                user: localStorage.getItem('qualishel_current_user') || 'Sistema'
+            });
+            
+            saveDemands();
+            renderKanban();
+            updateCardCounts();
+            updateDashboard(); // Atualizar dashboard se estiver visível
+        }
     }
 }
 
@@ -1242,12 +1414,22 @@ function updateCardCounts() {
 function renderPanelSelector() {
     if (!panelSelector) return;
     
+    const customSelect = document.getElementById('panel-selector-custom');
+    const customTrigger = document.getElementById('panel-selector-trigger');
+    const customValue = customTrigger?.querySelector('.custom-select-value');
+    const customOptions = document.getElementById('panel-selector-options');
+    
     // Se acesso restrito ao card, desabilitar seletor de painel
     if (currentUserAccessType === 'card') {
         panelSelector.innerHTML = '<option value="">Acesso restrito a um card específico</option>';
         panelSelector.disabled = true;
         panelSelector.style.opacity = '0.6';
         panelSelector.style.cursor = 'not-allowed';
+        
+        if (customValue) customValue.textContent = 'Acesso restrito a um card específico';
+        if (customTrigger) customTrigger.style.opacity = '0.6';
+        if (customTrigger) customTrigger.style.cursor = 'not-allowed';
+        if (customOptions) customOptions.innerHTML = '';
     } else if (currentUserAccessType === 'panel') {
         // Se acesso ao painel, mostrar apenas o painel permitido
         panelSelector.innerHTML = '';
@@ -1258,27 +1440,131 @@ function renderPanelSelector() {
             option.textContent = allowedPanel.name;
             option.selected = true;
             panelSelector.appendChild(option);
+            
+            if (customValue) customValue.textContent = allowedPanel.name;
+            if (customOptions) {
+                customOptions.innerHTML = `<div class="custom-select-option selected disabled">${allowedPanel.name}</div>`;
+            }
         }
         panelSelector.disabled = true;
         panelSelector.style.opacity = '0.6';
         panelSelector.style.cursor = 'not-allowed';
+        if (customTrigger) customTrigger.style.opacity = '0.6';
+        if (customTrigger) customTrigger.style.cursor = 'not-allowed';
     } else {
         // Acesso completo - comportamento normal
         panelSelector.innerHTML = '<option value="">Selecione um painel...</option>';
         panelSelector.disabled = false;
         panelSelector.style.opacity = '1';
         panelSelector.style.cursor = 'pointer';
+        if (customTrigger) customTrigger.style.opacity = '1';
+        if (customTrigger) customTrigger.style.cursor = 'pointer';
         
-        panels.forEach(panel => {
+        // Filtrar apenas painéis não arquivados
+        const availablePanels = panels.filter(p => !p.archived);
+        let selectedPanelName = 'Selecione um painel...';
+        
+        availablePanels.forEach(panel => {
             const option = document.createElement('option');
             option.value = panel.id;
             option.textContent = panel.name;
             if (panel.id === currentPanelId) {
                 option.selected = true;
+                selectedPanelName = panel.name;
             }
             panelSelector.appendChild(option);
         });
+        
+        // Atualizar dropdown customizado
+        if (customValue) customValue.textContent = selectedPanelName;
+        if (customOptions) {
+            const customSelectContainer = document.getElementById('panel-selector-custom');
+            
+            // Limpar opções antigas
+            customOptions.innerHTML = '';
+            
+            // Criar opções
+            availablePanels.forEach(panel => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'custom-select-option';
+                optionDiv.textContent = panel.name;
+                optionDiv.dataset.value = panel.id;
+                optionDiv.dataset.panelId = panel.id;
+                optionDiv.dataset.panelName = panel.name;
+                if (panel.id === currentPanelId) {
+                    optionDiv.classList.add('selected');
+                }
+                customOptions.appendChild(optionDiv);
+            });
+            
+            // Usar event delegation no container para garantir que sempre funcione
+            // Remover listener antigo se existir
+            if (customOptions._panelClickHandler) {
+                customOptions.removeEventListener('click', customOptions._panelClickHandler, true);
+            }
+            
+            // Criar novo handler usando event delegation
+            customOptions._panelClickHandler = function(e) {
+                // Encontrar a opção clicada
+                const clickedOption = e.target.closest('.custom-select-option');
+                if (!clickedOption) return;
+                
+                // Parar propagação
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                // Obter valores do dataset
+                const panelIdValue = parseInt(clickedOption.dataset.panelId);
+                const panelNameValue = clickedOption.dataset.panelName;
+                
+                if (!panelIdValue || !panelNameValue) return;
+                
+                // FECHAR DROPDOWN IMEDIATAMENTE - PRIMEIRA COISA
+                const customSelectEl = document.getElementById('panel-selector-custom');
+                if (customSelectEl) {
+                    customSelectEl.classList.remove('open');
+                    // Forçar remoção também via style para garantir
+                    const dropdownEl = document.getElementById('panel-selector-dropdown');
+                    if (dropdownEl) {
+                        dropdownEl.style.opacity = '0';
+                        dropdownEl.style.visibility = 'hidden';
+                        dropdownEl.style.pointerEvents = 'none';
+                        dropdownEl.style.transform = 'translateY(-10px)';
+                    }
+                }
+                
+                // Atualizar select nativo
+                const currentPanelSelector = document.getElementById('panel-selector');
+                if (currentPanelSelector) {
+                    currentPanelSelector.value = panelIdValue;
+                }
+                
+                // Atualizar o texto exibido no trigger
+                const customValueEl = document.querySelector('#panel-selector-trigger .custom-select-value');
+                if (customValueEl) {
+                    customValueEl.textContent = panelNameValue;
+                }
+                
+                // Disparar evento change para atualizar o painel
+                setTimeout(() => {
+                    const currentPanelSelector = document.getElementById('panel-selector');
+                    if (currentPanelSelector) {
+                        const changeEvent = new Event('change', { bubbles: true });
+                        currentPanelSelector.dispatchEvent(changeEvent);
+                    }
+                }, 10);
+                
+                return false;
+            };
+            
+            // Adicionar listener no container usando event delegation
+            customOptions.addEventListener('click', customOptions._panelClickHandler, true);
+        }
     }
+    
+    // Reinicializar o dropdown para garantir que os listeners estejam atualizados
+    initCustomPanelDropdown();
     
     // Atualizar também os seletores do dashboard e relatório
     renderDashboardPanelSelector();
@@ -1287,6 +1573,171 @@ function renderPanelSelector() {
     if (document.getElementById('panel-multiple-selector-container')?.style.display !== 'none') {
         renderPanelCheckboxes();
     }
+}
+// Variáveis globais para armazenar handlers (para poder remover se necessário)
+let handleOutsideClickGlobal = null;
+let customTriggerClickHandler = null;
+
+// Inicializar dropdown customizado
+function initCustomPanelDropdown() {
+    const customSelect = document.getElementById('panel-selector-custom');
+    const customTrigger = document.getElementById('panel-selector-trigger');
+    const customDropdown = document.getElementById('panel-selector-dropdown');
+    
+    if (!customSelect || !customTrigger || !customDropdown) return;
+    
+    // Remover listeners antigos se existirem
+    if (handleOutsideClickGlobal) {
+        document.removeEventListener('click', handleOutsideClickGlobal, false);
+        handleOutsideClickGlobal = null;
+    }
+    
+    if (customTriggerClickHandler) {
+        customTrigger.removeEventListener('click', customTriggerClickHandler, true);
+        customTriggerClickHandler = null;
+    }
+    
+    // Função para posicionar o dropdown
+    function positionDropdown() {
+        if (!customSelect.classList.contains('open')) return;
+        
+        const triggerRect = customTrigger.getBoundingClientRect();
+        const dropdown = customDropdown;
+        
+        // Calcular posição
+        let top = triggerRect.bottom + 8;
+        let left = triggerRect.left;
+        let width = triggerRect.width;
+        
+        // Temporariamente tornar visível para medir altura real
+        dropdown.style.visibility = 'visible';
+        dropdown.style.opacity = '0';
+        dropdown.style.top = `${top}px`;
+        dropdown.style.left = `${left}px`;
+        dropdown.style.width = `${width}px`;
+        
+        const dropdownHeight = dropdown.scrollHeight;
+        const maxHeight = Math.min(300, window.innerHeight - 200);
+        
+        // Verificar se há espaço abaixo
+        const spaceBelow = window.innerHeight - triggerRect.bottom - 20;
+        const spaceAbove = triggerRect.top - 20;
+        
+        // Se não houver espaço suficiente abaixo, abrir para cima
+        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+            top = triggerRect.top - Math.min(dropdownHeight, maxHeight) - 8;
+            if (top < 20) {
+                top = 20;
+            }
+        } else {
+            // Garantir que não saia da tela
+            if (top + dropdownHeight > window.innerHeight - 20) {
+                top = window.innerHeight - Math.min(dropdownHeight, maxHeight) - 20;
+            }
+        }
+        
+        // Ajustar se sair da tela à direita
+        if (left + width > window.innerWidth - 20) {
+            left = window.innerWidth - width - 20;
+        }
+        
+        // Ajustar se sair da tela à esquerda
+        if (left < 20) {
+            left = 20;
+        }
+        
+        dropdown.style.top = `${top}px`;
+        dropdown.style.left = `${left}px`;
+        dropdown.style.width = `${width}px`;
+        dropdown.style.maxHeight = `${maxHeight}px`;
+        dropdown.style.opacity = '1';
+    }
+    
+    // Toggle dropdown ao clicar no trigger (usar função nomeada para poder remover)
+    customTriggerClickHandler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        // Se já estiver aberto, fechar
+        if (customSelect.classList.contains('open')) {
+            customSelect.classList.remove('open');
+            const dropdown = document.getElementById('panel-selector-dropdown');
+            if (dropdown) {
+                dropdown.style.opacity = '0';
+                dropdown.style.visibility = 'hidden';
+                dropdown.style.pointerEvents = 'none';
+                dropdown.style.transform = 'translateY(-10px)';
+            }
+        } else {
+            // Se estiver fechado, abrir
+            customSelect.classList.add('open');
+            const dropdown = document.getElementById('panel-selector-dropdown');
+            if (dropdown) {
+                dropdown.style.opacity = '1';
+                dropdown.style.visibility = 'visible';
+                dropdown.style.pointerEvents = 'auto';
+                dropdown.style.transform = 'translateY(0)';
+            }
+            setTimeout(positionDropdown, 10);
+        }
+    };
+    
+    customTrigger.addEventListener('click', customTriggerClickHandler, true);
+    
+    // Reposicionar ao redimensionar ou scroll
+    window.addEventListener('resize', () => {
+        if (customSelect.classList.contains('open')) {
+            positionDropdown();
+        }
+    });
+    
+    window.addEventListener('scroll', () => {
+        if (customSelect.classList.contains('open')) {
+            positionDropdown();
+        }
+    }, true);
+    
+    // Fechar dropdown ao clicar fora (usar uma função nomeada para poder remover se necessário)
+    handleOutsideClickGlobal = (e) => {
+        // Verificar se o clique foi em uma opção ou no trigger
+        const clickedOption = e.target.closest('.custom-select-option');
+        const clickedTrigger = e.target.closest('.custom-select-trigger');
+        const clickedDropdown = e.target.closest('.custom-select-dropdown');
+        
+        // Se foi no trigger, não fazer nada (o handler do trigger já cuida disso)
+        if (clickedTrigger) {
+            return;
+        }
+        
+        // Se foi em uma opção ou dentro do dropdown, não fechar aqui
+        if (clickedOption || clickedDropdown) {
+            return;
+        }
+        
+        // Se não foi em nenhum elemento do dropdown, fechar
+        const currentCustomSelect = document.getElementById('panel-selector-custom');
+        if (currentCustomSelect && !currentCustomSelect.contains(e.target)) {
+            currentCustomSelect.classList.remove('open');
+            const dropdown = document.getElementById('panel-selector-dropdown');
+            if (dropdown) {
+                dropdown.style.opacity = '0';
+                dropdown.style.visibility = 'hidden';
+                dropdown.style.pointerEvents = 'none';
+                dropdown.style.transform = 'translateY(-10px)';
+            }
+        }
+    };
+    
+    // Adicionar listener SEM capture para não interferir com o trigger
+    document.addEventListener('click', handleOutsideClickGlobal, false);
+    
+    // Fechar dropdown ao pressionar ESC
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && customSelect.classList.contains('open')) {
+            customSelect.classList.remove('open');
+        }
+    });
 }
 
 function renderDashboardPanelSelector() {
@@ -1376,11 +1827,37 @@ function handlePanelChange(e) {
         renderKanban();
         updateCardCounts();
         updateDashboard();
+        
+        // Atualizar valor exibido no dropdown customizado
+        const customValue = document.querySelector('#panel-selector-trigger .custom-select-value');
+        const selectedPanel = panels.find(p => p.id === panelId);
+        if (customValue && selectedPanel) {
+            customValue.textContent = selectedPanel.name;
+        }
+        
+        // Atualizar classe selected nas opções
+        const customOptions = document.querySelectorAll('#panel-selector-options .custom-select-option');
+        customOptions.forEach(opt => {
+            opt.classList.remove('selected');
+            if (parseInt(opt.dataset.value) === panelId) {
+                opt.classList.add('selected');
+            }
+        });
     } else {
         currentPanelId = null;
         savePanels();
         renderKanban();
         updateCardCounts();
+        
+        // Atualizar valor exibido no dropdown customizado
+        const customValue = document.querySelector('#panel-selector-trigger .custom-select-value');
+        if (customValue) {
+            customValue.textContent = 'Selecione um painel...';
+        }
+        
+        // Remover seleção das opções
+        const customOptions = document.querySelectorAll('#panel-selector-options .custom-select-option');
+        customOptions.forEach(opt => opt.classList.remove('selected'));
     }
 }
 
@@ -1492,8 +1969,8 @@ function renderPanelsList() {
                     <button class="btn-secondary" onclick="editPanel(${panel.id})" title="Editar">
                         ✏️
                     </button>
-                    <button class="btn-secondary" onclick="deletePanel(${panel.id})" title="Excluir">
-                        🗑️
+                    <button class="btn-secondary" onclick="deletePanel(${panel.id})" title="Arquivar">
+                        📦
                     </button>
                 </div>
             </div>
@@ -1506,20 +1983,30 @@ window.editPanel = function(panelId) {
 };
 
 window.deletePanel = function(panelId) {
-    if (!confirm('Tem certeza que deseja excluir este painel? Todas as demandas associadas também serão excluídas.')) {
+    if (!confirm('Tem certeza que deseja arquivar este painel? Todas as demandas associadas também serão arquivadas e poderão ser restauradas depois.')) {
         return;
     }
     
-    // Remover painel
-    panels = panels.filter(p => p.id !== panelId);
+    // Arquivar painel
+    const panel = panels.find(p => p.id === panelId);
+    if (panel) {
+        panel.archived = true;
+        panel.archivedAt = new Date().toISOString();
+    }
     
-    // Remover demandas do painel
-    demands = demands.filter(d => d.panelId !== panelId);
+    // Arquivar demandas do painel
+    demands.forEach(d => {
+        if (d.panelId === panelId && !d.archived) {
+            d.archived = true;
+            d.archivedAt = new Date().toISOString();
+        }
+    });
     
-    // Se o painel excluído era o atual, selecionar outro ou limpar
+    // Se o painel arquivado era o atual, selecionar outro ou limpar
     if (currentPanelId === panelId) {
-        if (panels.length > 0) {
-            currentPanelId = panels[0].id;
+        const activePanels = panels.filter(p => !p.archived);
+        if (activePanels.length > 0) {
+            currentPanelId = activePanels[0].id;
         } else {
             currentPanelId = null;
         }
@@ -1839,7 +2326,6 @@ async function loadPanels() {
         savePanels();
     }
 }
-
 // Persistência (Firebase ou LocalStorage)
 function saveDemands() {
     // Se estiver atualizando de sincronização em tempo real, não salvar no Firebase (evitar loop)
@@ -2052,10 +2538,26 @@ async function loadDemands() {
         saveDemands();
     }
     
-    // Garantir que todas as demandas tenham o campo collaborators
+    // Garantir que todas as demandas tenham os campos necessários
     demands.forEach(demand => {
         if (!demand.collaborators) {
             demand.collaborators = [];
+        }
+        if (!demand.history) {
+            demand.history = [];
+            // Se não tem histórico mas já existe, criar entrada inicial
+            if (demand.createdAt) {
+                demand.history.push({
+                    action: 'created',
+                    timestamp: demand.createdAt,
+                    user: 'Sistema',
+                    details: {
+                        title: demand.title,
+                        status: demand.status,
+                        priority: demand.priority
+                    }
+                });
+            }
         }
         if (!demand.tasks) {
             demand.tasks = [];
@@ -2210,6 +2712,310 @@ function closeDeadlineModal() {
     }
 }
 
+// ========== INTEGRAÇÃO COM GOOGLE CALENDAR ==========
+
+// Função para criar URL do Google Calendar para adicionar evento
+function createGoogleCalendarUrl(demand, deadline, startDate = null) {
+    const deadlineDate = new Date(deadline);
+    const start = startDate ? new Date(startDate) : deadlineDate;
+    
+    // Formatar datas no formato ISO 8601 (YYYYMMDDTHHmmssZ)
+    const formatDate = (date) => {
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+        return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+    };
+    
+    const startFormatted = formatDate(start);
+    const endFormatted = formatDate(deadlineDate);
+    
+    // Criar título do evento
+    const eventTitle = encodeURIComponent(`Prazo: ${demand.title}`);
+    
+    // Criar descrição do evento
+    const description = encodeURIComponent(
+        `Demanda: ${demand.title}\n` +
+        `Status: ${demand.status}\n` +
+        `Prioridade: ${demand.priority}\n` +
+        `Responsável: ${demand.responsible}\n` +
+        (demand.description ? `\nDescrição: ${demand.description}` : '')
+    );
+    
+    // Criar localização (opcional)
+    const location = encodeURIComponent('Qualishel - Escritório da Qualidade');
+    
+    // Construir URL do Google Calendar
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+        `&text=${eventTitle}` +
+        `&dates=${startFormatted}/${endFormatted}` +
+        `&details=${description}` +
+        `&location=${location}` +
+        `&sf=true` +
+        `&output=xml`;
+    
+    return calendarUrl;
+}
+
+// Função para adicionar evento ao Google Calendar
+function addToGoogleCalendar(demand, deadline, startDate = null) {
+    const calendarUrl = createGoogleCalendarUrl(demand, deadline, startDate);
+    
+    // Abrir Google Calendar em nova aba
+    window.open(calendarUrl, '_blank');
+    
+    console.log('📅 Link do Google Calendar gerado:', calendarUrl);
+    return calendarUrl;
+}
+
+// ========== AUTENTICAÇÃO GOOGLE CALENDAR ==========
+
+// Carregar token salvo
+function loadGoogleCalendarToken() {
+    const saved = localStorage.getItem('qualishel-google-calendar-token');
+    if (saved) {
+        try {
+            googleCalendarToken = JSON.parse(saved);
+            updateGoogleCalendarStatus();
+            return true;
+        } catch (e) {
+            console.error('Erro ao carregar token do Google Calendar:', e);
+        }
+    }
+    return false;
+}
+
+// Carregar Client ID salvo
+function loadGoogleCalendarClientId() {
+    const saved = localStorage.getItem('qualishel-google-calendar-client-id');
+    if (saved) {
+        googleCalendarClientId = saved;
+        return true;
+    }
+    return false;
+}
+
+// Salvar Client ID
+function saveGoogleCalendarClientId() {
+    const clientIdInput = document.getElementById('google-calendar-client-id');
+    const clientId = clientIdInput ? clientIdInput.value.trim() : '';
+    
+    if (!clientId) {
+        alert('Por favor, informe o Client ID do Google.');
+        return;
+    }
+    
+    if (!clientId.includes('.apps.googleusercontent.com')) {
+        if (!confirm('O Client ID parece estar incompleto. Deseja continuar mesmo assim?')) {
+            return;
+        }
+    }
+    
+    googleCalendarClientId = clientId;
+    localStorage.setItem('qualishel-google-calendar-client-id', clientId);
+    showEmailNotification('Client ID salvo com sucesso!', 'success');
+}
+
+// Conectar com Google Calendar usando OAuth 2.0
+async function connectGoogleCalendar() {
+    try {
+        // Verificar se Client ID está configurado
+        if (!googleCalendarClientId) {
+            alert('⚠️ Por favor, configure o Client ID do Google primeiro nas Configurações.');
+            return;
+        }
+        
+        // Verificar se Google API está disponível
+        if (typeof google === 'undefined' || !google.accounts) {
+            alert('⚠️ Google API não está disponível. Verifique sua conexão com a internet.');
+            return;
+        }
+
+        // Configurar OAuth 2.0
+        google.accounts.oauth2.initTokenClient({
+            client_id: googleCalendarClientId,
+            scope: 'https://www.googleapis.com/auth/calendar.events',
+            callback: async (response) => {
+                if (response.error) {
+                    console.error('Erro na autenticação:', response.error);
+                    alert('Erro ao conectar com Google Calendar: ' + response.error);
+                    return;
+                }
+
+                // Salvar token
+                googleCalendarToken = {
+                    access_token: response.access_token,
+                    expires_in: response.expires_in,
+                    token_type: response.token_type,
+                    scope: response.scope,
+                    expires_at: Date.now() + (response.expires_in * 1000)
+                };
+                
+                localStorage.setItem('qualishel-google-calendar-token', JSON.stringify(googleCalendarToken));
+                
+                // Obter informações do usuário
+                await updateGoogleCalendarUserInfo();
+                updateGoogleCalendarStatus();
+                
+                showEmailNotification('✅ Conectado ao Google Calendar com sucesso!', 'success');
+            }
+        }).requestAccessToken();
+    } catch (error) {
+        console.error('Erro ao conectar Google Calendar:', error);
+        alert('Erro ao conectar com Google Calendar. Verifique o console para mais detalhes.');
+    }
+}
+
+// Obter informações do usuário
+async function updateGoogleCalendarUserInfo() {
+    if (!googleCalendarToken || !googleCalendarToken.access_token) return;
+    
+    try {
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: {
+                'Authorization': `Bearer ${googleCalendarToken.access_token}`
+            }
+        });
+        
+        if (response.ok) {
+            const userInfo = await response.json();
+            localStorage.setItem('qualishel-google-calendar-user-email', userInfo.email || '');
+        }
+    } catch (error) {
+        console.error('Erro ao obter informações do usuário:', error);
+    }
+}
+
+// Desconectar Google Calendar
+function disconnectGoogleCalendar() {
+    if (confirm('Tem certeza que deseja desconectar do Google Calendar?')) {
+        googleCalendarToken = null;
+        localStorage.removeItem('qualishel-google-calendar-token');
+        localStorage.removeItem('qualishel-google-calendar-user-email');
+        updateGoogleCalendarStatus();
+        showEmailNotification('Desconectado do Google Calendar', 'info');
+    }
+}
+
+// Atualizar status da conexão na interface
+function updateGoogleCalendarStatus() {
+    const statusElement = document.getElementById('google-calendar-status');
+    const notConnectedDiv = document.getElementById('google-calendar-not-connected');
+    const connectedDiv = document.getElementById('google-calendar-connected');
+    const userEmailSpan = document.getElementById('google-calendar-user-email');
+    
+    if (googleCalendarToken && googleCalendarToken.access_token) {
+        // Verificar se token expirou
+        if (googleCalendarToken.expires_at && Date.now() >= googleCalendarToken.expires_at) {
+            // Token expirado, desconectar
+            disconnectGoogleCalendar();
+            return;
+        }
+        
+        if (statusElement) statusElement.textContent = 'Conectado';
+        if (notConnectedDiv) notConnectedDiv.style.display = 'none';
+        if (connectedDiv) connectedDiv.style.display = 'block';
+        
+        const savedEmail = localStorage.getItem('qualishel-google-calendar-user-email');
+        if (userEmailSpan && savedEmail) {
+            userEmailSpan.textContent = savedEmail;
+        }
+    } else {
+        if (statusElement) statusElement.textContent = 'Não conectado';
+        if (notConnectedDiv) notConnectedDiv.style.display = 'block';
+        if (connectedDiv) connectedDiv.style.display = 'none';
+    }
+}
+
+// Função para criar evento usando Google Calendar API (requer autenticação)
+async function createGoogleCalendarEvent(demand, deadline, startDate = null) {
+    try {
+        // Verificar se há token válido
+        if (!googleCalendarToken || !googleCalendarToken.access_token) {
+            console.log('ℹ️ Não autenticado com Google Calendar. Usando método de URL simples.');
+            return addToGoogleCalendar(demand, deadline, startDate);
+        }
+        
+        // Verificar se token expirou
+        if (googleCalendarToken.expires_at && Date.now() >= googleCalendarToken.expires_at) {
+            console.log('⚠️ Token expirado. Desconectando...');
+            disconnectGoogleCalendar();
+            return addToGoogleCalendar(demand, deadline, startDate);
+        }
+        
+        const deadlineDate = new Date(deadline);
+        const start = startDate ? new Date(startDate) : deadlineDate;
+        
+        // Criar evento
+        const event = {
+            summary: `Prazo: ${demand.title}`,
+            description: `Demanda: ${demand.title}\n` +
+                         `Status: ${demand.status}\n` +
+                         `Prioridade: ${demand.priority}\n` +
+                         `Responsável: ${demand.responsible}\n` +
+                         (demand.description ? `\nDescrição: ${demand.description}` : ''),
+            location: 'Qualishel - Escritório da Qualidade',
+            start: {
+                dateTime: start.toISOString(),
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            end: {
+                dateTime: deadlineDate.toISOString(),
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            reminders: {
+                useDefault: false,
+                overrides: [
+                    { method: 'email', minutes: 24 * 60 }, // 1 dia antes
+                    { method: 'popup', minutes: 60 } // 1 hora antes
+                ]
+            }
+        };
+        
+        // Inserir evento no calendário usando a API REST
+        const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${googleCalendarToken.access_token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(event)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || 'Erro ao criar evento');
+        }
+        
+        const result = await response.json();
+        console.log('✅ Evento criado no Google Calendar:', result);
+        
+        // Salvar ID do evento na demanda para poder atualizar depois
+        if (!demand.googleCalendarEventId) {
+            demand.googleCalendarEventId = {};
+        }
+        demand.googleCalendarEventId[deadline] = result.id;
+        saveDemands();
+        
+        showEmailNotification('✅ Prazo adicionado ao Google Calendar!', 'success');
+        
+        return result;
+    } catch (error) {
+        console.error('❌ Erro ao criar evento no Google Calendar:', error);
+        
+        // Se erro de autenticação, desconectar
+        if (error.message.includes('Invalid Credentials') || error.message.includes('401')) {
+            disconnectGoogleCalendar();
+        }
+        
+        // Fallback para método de URL simples
+        showEmailNotification('⚠️ Erro ao adicionar ao Google Calendar. Abrindo link alternativo...', 'error');
+        return addToGoogleCalendar(demand, deadline, startDate);
+    }
+}
 function handleDeadlineSubmit(e) {
     e.preventDefault();
     
@@ -2228,6 +3034,7 @@ function handleDeadlineSubmit(e) {
     const timeValue = document.getElementById('deadline-time').value;
     const startDateValue = document.getElementById('deadline-start-date')?.value;
     const reasonValue = document.getElementById('deadline-reason')?.value.trim();
+    const addToCalendar = document.getElementById('add-to-google-calendar')?.checked || false;
     
     // Validar justificativa
     if (!reasonValue) {
@@ -2287,6 +3094,36 @@ function handleDeadlineSubmit(e) {
     renderKanban();
     updateCardCounts();
     updateDashboard();
+    
+    // Adicionar ao Google Calendar se solicitado
+    if (addToCalendar && newDeadline) {
+        const startDate = startDateValue ? `${startDateValue}T00:00:00` : demand.createdAt;
+        
+        // Se estiver conectado ao Google Calendar, criar automaticamente
+        if (googleCalendarToken && googleCalendarToken.access_token) {
+            // Verificar se token ainda é válido (se não tiver expires_at, assumir válido)
+            const isTokenValid = !googleCalendarToken.expires_at || Date.now() < googleCalendarToken.expires_at;
+            
+            if (isTokenValid) {
+                // Criar automaticamente usando API (sem abrir Google Calendar)
+                console.log('📅 Criando evento automaticamente no Google Calendar...');
+                createGoogleCalendarEvent(demand, newDeadline, startDate).catch((error) => {
+                    console.error('❌ Erro ao criar evento automaticamente:', error);
+                    // Se falhar, tentar método de URL como fallback
+                    console.log('⚠️ Usando método de URL como fallback');
+                    addToGoogleCalendar(demand, newDeadline, startDate);
+                });
+            } else {
+                // Token expirado, usar método de URL
+                console.log('⚠️ Token expirado, usando método de URL');
+                addToGoogleCalendar(demand, newDeadline, startDate);
+            }
+        } else {
+            // Não conectado, usar método de URL simples
+            console.log('ℹ️ Não conectado ao Google Calendar, usando método de URL');
+            addToGoogleCalendar(demand, newDeadline, startDate);
+        }
+    }
     
     pendingDemandId = null;
     closeDeadlineModal();
@@ -2959,7 +3796,6 @@ function loadProductionUrl() {
     }
     updateProductionUrlStatus();
 }
-
 function saveProductionUrl() {
     const input = document.getElementById('production-url-input');
     if (!input) return;
@@ -3062,6 +3898,148 @@ async function testEmailSend() {
     }
 }
 
+// Função para testar se o link está sendo gerado e enviado corretamente
+async function testInviteLink() {
+    console.log('🧪 ========== TESTE DE LINK DE CONVITE ==========');
+    
+    // Verificar se há demandas disponíveis
+    if (!demands || demands.length === 0) {
+        console.error('❌ Nenhuma demanda encontrada. Crie uma demanda primeiro.');
+        alert('❌ Nenhuma demanda encontrada. Crie uma demanda primeiro.');
+        return;
+    }
+    
+    // Usar a primeira demanda disponível ou a demanda atual
+    const testDemand = demands[0];
+    const demandId = testDemand.id;
+    const panelId = testDemand.panelId || currentPanelId;
+    
+    console.log('📋 Demanda de teste:', {
+        id: demandId,
+        title: testDemand.title,
+        panelId: panelId
+    });
+    
+    // Testar geração de link para acesso ao card
+    console.log('\n🔗 Testando geração de link (acesso ao card)...');
+    const inviteDataCard = generatePanelInviteLink(demandId, panelId, 'card');
+    
+    if (!inviteDataCard) {
+        console.error('❌ Falha ao gerar link de acesso ao card');
+        alert('❌ Falha ao gerar link. Verifique se a URL de produção está configurada.');
+        return;
+    }
+    
+    console.log('✅ Link gerado com sucesso!');
+    console.log('📧 Link de acesso:', inviteDataCard.link);
+    console.log('📋 Nome do painel:', inviteDataCard.panelName);
+    console.log('🔐 Tipo de acesso:', inviteDataCard.accessType);
+    
+    // Testar geração de link para acesso ao painel completo
+    console.log('\n🔗 Testando geração de link (acesso ao painel completo)...');
+    const inviteDataPanel = generatePanelInviteLink(demandId, panelId, 'panel');
+    
+    if (inviteDataPanel) {
+        console.log('✅ Link de painel gerado:', inviteDataPanel.link);
+    }
+    
+    // Verificar se o link está sendo incluído nos parâmetros do template
+    console.log('\n📧 Verificando parâmetros que seriam enviados ao EmailJS...');
+    
+    const accessLink = inviteDataCard.link;
+    const panelName = inviteDataCard.panelName;
+    const accessTypeLabel = 'Apenas este Card';
+    
+    // Obter URL do site
+    let siteUrl = window.location.origin;
+    if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1') || siteUrl.startsWith('file://')) {
+        const savedProductionUrl = localStorage.getItem('qualishel-production-url');
+        if (savedProductionUrl && savedProductionUrl.trim()) {
+            siteUrl = savedProductionUrl.trim();
+        }
+    }
+    
+    const messageWithLink = `Você foi convidado para colaborar na demanda "${testDemand.title}" do painel "${panelName}". Tipo de acesso: ${accessTypeLabel}.
+
+Para acessar o painel, clique no link abaixo:
+${accessLink}
+
+Ou copie e cole o link no seu navegador:
+${accessLink}`;
+    
+    const templateParams = {
+        to_name: 'Nome do Convidado',
+        to_email: 'email@exemplo.com',
+        demand_title: testDemand.title,
+        demand_description: testDemand.description || 'Sem descrição',
+        demand_status: testDemand.status === 'pendente' ? 'Pendente' : 
+                      testDemand.status === 'andamento' ? 'Em Andamento' : 
+                      testDemand.status === 'revisao' ? 'Em Revisão' : 'Concluído',
+        demand_priority: testDemand.priority === 'baixa' ? 'Baixa' : 
+                       testDemand.priority === 'media' ? 'Média' : 
+                       testDemand.priority === 'alta' ? 'Alta' : 'Urgente',
+        demand_responsible: testDemand.responsible,
+        panel_name: panelName,
+        from_name: 'Escritório da Qualidade',
+        message: messageWithLink,
+        access_link: accessLink,
+        access_type: accessTypeLabel,
+        site_url: siteUrl,
+        link_text: 'Acessar Qualishel',
+        link_url: accessLink
+    };
+    
+    console.log('📋 Parâmetros do template:');
+    console.table(templateParams);
+    
+    // Verificar se access_link está presente
+    if (templateParams.access_link && templateParams.access_link.includes('demand=')) {
+        console.log('✅ Link está presente nos parâmetros!');
+        console.log('🔗 access_link:', templateParams.access_link);
+        console.log('🔗 link_url:', templateParams.link_url);
+    } else {
+        console.error('❌ Link NÃO está presente ou está incorreto nos parâmetros!');
+    }
+    
+    // Verificar se link está na mensagem
+    if (messageWithLink.includes(accessLink)) {
+        console.log('✅ Link está incluído na mensagem!');
+    } else {
+        console.error('❌ Link NÃO está incluído na mensagem!');
+    }
+    
+    // Perguntar se quer enviar um e-mail de teste
+    console.log('\n📧 Deseja enviar um e-mail de teste?');
+    const sendTest = confirm('Deseja enviar um e-mail de teste para verificar se o link está sendo enviado corretamente?');
+    
+    if (sendTest) {
+        const testEmail = prompt('Digite seu e-mail para receber o teste:');
+        if (testEmail && testEmail.trim()) {
+            console.log('📤 Enviando e-mail de teste...');
+            try {
+                // Criar demanda temporária com ID para o teste
+                const testDemandWithId = {
+                    ...testDemand,
+                    id: demandId
+                };
+                await sendInviteEmail('Teste de Link', testEmail.trim(), testDemandWithId, 'card');
+                console.log('✅ E-mail de teste enviado! Verifique sua caixa de entrada.');
+            } catch (error) {
+                console.error('❌ Erro ao enviar e-mail de teste:', error);
+            }
+        }
+    }
+    
+    console.log('\n🧪 ========== FIM DO TESTE ==========');
+    console.log('\n💡 Dica: Verifique o console acima para ver todos os detalhes do link gerado.');
+    
+    // Mostrar resumo visual
+    alert(`✅ Teste concluído!\n\nLink gerado: ${accessLink}\n\nVerifique o console para mais detalhes.`);
+}
+
+// Tornar a função acessível globalmente para teste no console
+window.testInviteLink = testInviteLink;
+
 function saveUserName() {
     const userNameInput = document.getElementById('user-name');
     const userName = userNameInput ? userNameInput.value.trim() : '';
@@ -3074,7 +4052,13 @@ function saveUserName() {
     currentUserName = userName;
     localStorage.setItem('qualishel-user-name', userName);
     
-    showEmailNotification('Nome salvo com sucesso!', 'success');
+    // Salvar preferência de notificações
+    const notificationsCheckbox = document.getElementById('notifications-enabled');
+    if (notificationsCheckbox) {
+        localStorage.setItem('qualishel-notifications-enabled', notificationsCheckbox.checked ? 'true' : 'false');
+    }
+    
+    showEmailNotification('Configurações salvas com sucesso!', 'success');
 }
 
 function loadSettingsPage() {
@@ -3083,6 +4067,19 @@ function loadSettingsPage() {
     // Carregar configurações de e-mail
     loadEmailConfig();
     updateEmailStatus();
+    
+    // Carregar token do Google Calendar
+    loadGoogleCalendarToken();
+    loadGoogleCalendarClientId();
+    updateGoogleCalendarStatus();
+    
+    // Preencher Client ID se existir
+    if (googleCalendarClientId) {
+        const clientIdInput = document.getElementById('google-calendar-client-id');
+        if (clientIdInput) {
+            clientIdInput.value = googleCalendarClientId;
+        }
+    }
     
     // Garantir que os campos estão preenchidos
     if (emailConfig.publicKey) {
@@ -3103,6 +4100,23 @@ function loadSettingsPage() {
     if (savedUserName) {
         const userNameInput = document.getElementById('user-name');
         if (userNameInput) userNameInput.value = savedUserName;
+    }
+    
+    // Carregar preferência de notificações (padrão: habilitado)
+    const notificationsEnabled = localStorage.getItem('qualishel-notifications-enabled') !== 'false';
+    const notificationsCheckbox = document.getElementById('notifications-enabled');
+    if (notificationsCheckbox) {
+        notificationsCheckbox.checked = notificationsEnabled;
+    }
+    
+    // Carregar preferência de adição automática ao calendário
+    const autoAddEnabled = localStorage.getItem('qualishel-auto-add-to-calendar') !== 'false';
+    const autoAddCheckbox = document.getElementById('auto-add-to-calendar');
+    if (autoAddCheckbox) {
+        autoAddCheckbox.checked = autoAddEnabled;
+        autoAddCheckbox.addEventListener('change', (e) => {
+            localStorage.setItem('qualishel-auto-add-to-calendar', e.target.checked ? 'true' : 'false');
+        });
     }
 }
 
@@ -3401,6 +4415,159 @@ function showEmailNotification(message, type) {
     }, 3000);
 }
 
+// ========== NOTIFICAÇÕES DE ATUALIZAÇÃO ==========
+
+// Função para enviar notificações de atualização aos colaboradores
+async function notifyCollaboratorsAboutUpdate(demand, updateType, updateDetails = {}) {
+    // Verificar se notificações estão habilitadas (padrão: sim)
+    const notificationsEnabled = localStorage.getItem('qualishel-notifications-enabled') !== 'false';
+    if (!notificationsEnabled) {
+        console.log('ℹ️ Notificações por e-mail desabilitadas');
+        return;
+    }
+    
+    // Verificar se há colaboradores com e-mail
+    if (!demand.collaborators || demand.collaborators.length === 0) {
+        console.log('ℹ️ Nenhum colaborador para notificar');
+        return;
+    }
+    
+    // Filtrar colaboradores que têm e-mail
+    const collaboratorsWithEmail = demand.collaborators.filter(c => c.email && c.email.trim());
+    if (collaboratorsWithEmail.length === 0) {
+        console.log('ℹ️ Nenhum colaborador com e-mail para notificar');
+        return;
+    }
+    
+    // Verificar se EmailJS está configurado
+    if (!emailConfig.publicKey || !emailConfig.serviceId || !emailConfig.templateId) {
+        console.log('ℹ️ EmailJS não configurado. Notificações não serão enviadas.');
+        return;
+    }
+    
+    // Gerar link de acesso
+    const inviteData = generatePanelInviteLink(demand.id, demand.panelId, 'card');
+    if (!inviteData) {
+        console.warn('⚠️ Não foi possível gerar link para notificação');
+        return;
+    }
+    
+    const accessLink = inviteData.link;
+    const panelName = inviteData.panelName;
+    
+    // Obter URL do site
+    let siteUrl = window.location.origin;
+    if (siteUrl.includes('localhost') || siteUrl.includes('127.0.0.1') || siteUrl.startsWith('file://')) {
+        const savedProductionUrl = localStorage.getItem('qualishel-production-url');
+        if (savedProductionUrl && savedProductionUrl.trim()) {
+            siteUrl = savedProductionUrl.trim();
+        } else {
+            console.log('ℹ️ URL de produção não configurada. Notificações não serão enviadas.');
+            return;
+        }
+    }
+    
+    // Preparar mensagem baseada no tipo de atualização
+    let updateMessage = '';
+    let updateTitle = '';
+    
+    switch (updateType) {
+        case 'new_message':
+            updateTitle = 'Nova mensagem no chat';
+            updateMessage = `${currentUserName || 'Um colaborador'} enviou uma nova mensagem na demanda "${demand.title}":\n\n"${updateDetails.messageText || ''}"`;
+            break;
+        case 'new_task':
+            updateTitle = 'Nova tarefa adicionada';
+            updateMessage = `${currentUserName || 'Um colaborador'} adicionou uma nova tarefa na demanda "${demand.title}":\n\n"${updateDetails.taskText || ''}"`;
+            break;
+        case 'task_completed':
+            updateTitle = 'Tarefa concluída';
+            updateMessage = `${currentUserName || 'Um colaborador'} concluiu uma tarefa na demanda "${demand.title}":\n\n"${updateDetails.taskText || ''}"`;
+            break;
+        case 'status_changed':
+            updateTitle = 'Status alterado';
+            updateMessage = `O status da demanda "${demand.title}" foi alterado para "${updateDetails.newStatus || demand.status}".`;
+            break;
+        case 'priority_changed':
+            updateTitle = 'Prioridade alterada';
+            updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
+            break;
+        default:
+            updateTitle = 'Atualização na demanda';
+            updateMessage = `Houve uma atualização na demanda "${demand.title}".`;
+    }
+    
+    // Enviar e-mail para cada colaborador (exceto o autor da atualização)
+    const emailPromises = collaboratorsWithEmail.map(async (collaborator) => {
+        // Não notificar o próprio autor da atualização
+        if (collaborator.name === currentUserName) {
+            return;
+        }
+        
+        try {
+            const messageWithLink = `${updateMessage}\n\nPara ver a atualização, clique no link abaixo:\n${accessLink}\n\nOu copie e cole o link no seu navegador:\n${accessLink}`;
+            
+            const templateParams = {
+                to_name: collaborator.name,
+                to_email: collaborator.email,
+                demand_title: demand.title,
+                demand_description: demand.description || 'Sem descrição',
+                demand_status: demand.status === 'pendente' ? 'Pendente' : 
+                              demand.status === 'andamento' ? 'Em Andamento' : 
+                              demand.status === 'revisao' ? 'Em Revisão' : 'Concluído',
+                demand_priority: demand.priority === 'baixa' ? 'Baixa' : 
+                               demand.priority === 'media' ? 'Média' : 
+                               demand.priority === 'alta' ? 'Alta' : 'Urgente',
+                demand_responsible: demand.responsible,
+                panel_name: panelName,
+                from_name: 'Escritório da Qualidade',
+                message: messageWithLink,
+                access_link: accessLink,
+                access_type: 'Apenas este Card',
+                site_url: siteUrl,
+                link_text: 'Acessar Qualishel',
+                link_url: accessLink,
+                update_type: updateTitle,
+                update_message: updateMessage
+            };
+            
+            // Obter biblioteca EmailJS
+            let emailjsLib = null;
+            if (typeof emailjs !== 'undefined') {
+                emailjsLib = emailjs;
+            } else if (typeof window !== 'undefined' && typeof window.emailjs !== 'undefined') {
+                emailjsLib = window.emailjs;
+            } else {
+                console.warn('⚠️ EmailJS não disponível para notificação');
+                return;
+            }
+            
+            // Inicializar se necessário
+            try {
+                emailjsLib.init(emailConfig.publicKey);
+            } catch (initError) {
+                // Pode já estar inicializado
+            }
+            
+            // Enviar e-mail
+            await emailjsLib.send(
+                emailConfig.serviceId,
+                emailConfig.templateId,
+                templateParams
+            );
+            
+            console.log(`✅ Notificação enviada para ${collaborator.email}`);
+        } catch (error) {
+            console.error(`❌ Erro ao enviar notificação para ${collaborator.email}:`, error);
+        }
+    });
+    
+    // Aguardar todos os e-mails serem enviados (sem bloquear a interface)
+    Promise.all(emailPromises).then(() => {
+        console.log(`📧 Notificações de ${updateType} enviadas para ${collaboratorsWithEmail.length} colaborador(es)`);
+    });
+}
+
 // ========== TAREFAS E CHAT ==========
 
 window.openTasksChat = function(demandId) {
@@ -3428,7 +4595,6 @@ function closeTasksChatModal() {
     document.body.style.overflow = '';
     currentDemandForTasksChat = null;
 }
-
 function switchTab(tabName) {
     // Atualizar botões
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -3508,11 +4674,19 @@ window.toggleTask = function(index) {
     if (!demand || !demand.tasks) return;
     
     if (demand.tasks[index]) {
-        demand.tasks[index].completed = !demand.tasks[index].completed;
+        const task = demand.tasks[index];
+        const wasCompleted = task.completed;
+        task.completed = !task.completed;
         saveDemands();
         renderTasks();
+        renderKanban();
         updateCardCounts();
         updateDashboard();
+        
+        // Notificar colaboradores quando tarefa for concluída (não quando desmarcar)
+        if (task.completed && !wasCompleted) {
+            notifyCollaboratorsAboutUpdate(demand, 'task_completed', { taskText: task.text });
+        }
     }
 };
 
@@ -3540,6 +4714,9 @@ function handleAddTask() {
     renderKanban();
     updateCardCounts();
     updateDashboard();
+    
+    // Notificar colaboradores sobre nova tarefa
+    notifyCollaboratorsAboutUpdate(demand, 'new_task', { taskText: text });
     
     input.value = '';
 }
@@ -3615,6 +4792,9 @@ function handleSendChat() {
     saveDemands();
     renderChat();
     
+    // Notificar colaboradores sobre nova mensagem
+    notifyCollaboratorsAboutUpdate(demand, 'new_message', { messageText: text });
+    
     input.value = '';
 }
 
@@ -3645,8 +4825,10 @@ function getDashboardDemands() {
     const dashboardPanelSelector = document.getElementById('dashboard-panel-selector');
     const selectedPanelId = dashboardPanelSelector?.value ? parseInt(dashboardPanelSelector.value) : currentPanelId;
     
-    // Obter demandas filtradas por período do dashboard
-    let dashboardDemands = selectedPanelId ? demands.filter(d => d.panelId === selectedPanelId) : demands;
+    // Obter demandas filtradas por período do dashboard (excluir arquivadas)
+    let dashboardDemands = selectedPanelId 
+        ? demands.filter(d => d.panelId === selectedPanelId && !d.archived) 
+        : demands.filter(d => !d.archived);
     
     // Aplicar filtro de data se houver
     const dateStart = document.getElementById('dashboard-date-start')?.value;
@@ -3745,29 +4927,60 @@ function renderStatusChart() {
         ctx.fillStyle = colors[index];
         ctx.fill();
         
-        // Legenda
+        // Legenda com fundo para melhor visibilidade
         const labelAngle = currentAngle + sliceAngle / 2;
         const labelX = centerX + Math.cos(labelAngle) * (radius * 0.7);
         const labelY = centerY + Math.sin(labelAngle) * (radius * 0.7);
         
+        // Desenhar número branco sem fundo
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = '600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Adicionar sombra sutil para melhor legibilidade
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 2;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 1;
         ctx.fillText(value.toString(), labelX, labelY);
+        // Resetar sombra
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
         
         currentAngle += sliceAngle;
     });
     
-    // Legenda externa
-    const legendY = centerY + radius + 30;
+    // Legenda externa elegante
+    const legendY = centerY + radius + 35;
     labels.forEach((label, index) => {
         const x = (canvas.width / labels.length) * (index + 0.5);
+        const legendX = x - 45;
+        
+        // Quadrado da legenda com bordas arredondadas
         ctx.fillStyle = colors[index];
-        ctx.fillRect(x - 40, legendY - 8, 16, 16);
-        ctx.fillStyle = '#1e293b';
-        ctx.font = '11px sans-serif';
+        const rectX = legendX;
+        const rectY = legendY - 10;
+        const rectW = 18;
+        const rectH = 18;
+        const rectR = 4;
+        ctx.beginPath();
+        ctx.moveTo(rectX + rectR, rectY);
+        ctx.lineTo(rectX + rectW - rectR, rectY);
+        ctx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + rectR);
+        ctx.lineTo(rectX + rectW, rectY + rectH - rectR);
+        ctx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - rectR, rectY + rectH);
+        ctx.lineTo(rectX + rectR, rectY + rectH);
+        ctx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - rectR);
+        ctx.lineTo(rectX, rectY + rectR);
+        ctx.quadraticCurveTo(rectX, rectY, rectX + rectR, rectY);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Texto harmonizado
+        ctx.fillStyle = '#1e40af';
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(label, x - 20, legendY);
+        ctx.fillText(label, legendX + 24, legendY + 2);
     });
 }
 
@@ -3778,8 +4991,8 @@ function renderPriorityChart() {
     const ctx = canvas.getContext('2d');
     const priorities = ['baixa', 'media', 'alta', 'urgente'];
     const labels = ['Baixa', 'Média', 'Alta', 'Urgente'];
-    const colors = ['#d1fae5', '#fef3c7', '#fee2e2', '#fecaca'];
-    const textColors = ['#065f46', '#92400e', '#991b1b', '#7f1d1d'];
+    // Cores distintas e vibrantes para cada barra
+    const colors = ['#10b981', '#fbbf24', '#f59e0b', '#ef4444'];
     
     const dashboardDemands = getDashboardDemands();
     const data = priorities.map(p => dashboardDemands.filter(d => d.priority === p).length);
@@ -3802,16 +5015,23 @@ function renderPriorityChart() {
         ctx.fillStyle = colors[index];
         ctx.fillRect(x, y, barWidth - 40, height);
         
-        // Valor
-        ctx.fillStyle = textColors[index];
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(value.toString(), x + (barWidth - 40) / 2, y - 5);
+        // Número branco sem fundo
+        const valueX = x + (barWidth - 40) / 2;
+        const valueY = y - 8;
+        const valueText = value.toString();
         
-        // Label
-        ctx.fillStyle = '#64748b';
-        ctx.font = '11px sans-serif';
-        ctx.fillText(labels[index], x + (barWidth - 40) / 2, startY + 20);
+        // Desenhar número preto sem fundo
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(valueText, valueX, valueY);
+        
+        // Label em preto
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[index], valueX, startY + 22);
     });
 }
 
@@ -3890,31 +5110,52 @@ function renderTimelineChart() {
         ctx.fillStyle = '#2563eb';
         ctx.fillRect(x, y, barWidth - 20, height);
         
-        // Valor
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(value.toString(), x + (barWidth - 20) / 2, y - 5);
+        // Número preto sem fundo
+        const valueX = x + (barWidth - 20) / 2;
+        const valueY = y - 8;
+        const valueText = value.toString();
         
-        // Data
+        // Desenhar número preto sem fundo
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(valueText, valueX, valueY);
+        
+        // Data em preto
         const day = last7Days[index].getDate();
         const month = last7Days[index].getMonth() + 1;
-        ctx.fillStyle = '#64748b';
-        ctx.font = '10px sans-serif';
-        ctx.fillText(`${day}/${month}`, x + (barWidth - 20) / 2, startY + 20);
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${day}/${month}`, valueX, startY + 22);
     });
 }
-
 function renderGanttChart() {
     const canvas = document.getElementById('gantt-chart');
     if (!canvas) return;
     
     // Ajustar tamanho do canvas para ser responsivo
     const container = canvas.parentElement;
-    const containerWidth = container.clientWidth - 32; // Padding
+    if (!container) return;
+    
+    const containerWidth = container.clientWidth - 48; // Padding ajustado
     const minWidth = 1000;
     const canvasWidth = Math.max(containerWidth, minWidth);
-    const canvasHeight = 400;
+    
+    // Calcular altura dinâmica baseada no número de demandas
+    const dashboardDemands = getDashboardDemands();
+    const ganttDemandsCount = dashboardDemands.filter(d =>
+        (d.status === 'andamento' || d.status === 'revisao' || d.status === 'concluido') && d.deadline
+    ).length;
+    
+    const baseHeight = 120; // Altura base (título + margens)
+    const rowHeight = 42;
+    const rowSpacing = 16;
+    const minRows = 3; // Mínimo de 3 linhas visíveis
+    const rows = Math.max(ganttDemandsCount, minRows);
+    const calculatedHeight = baseHeight + (rows * (rowHeight + rowSpacing)) + rowSpacing;
+    const canvasHeight = Math.max(calculatedHeight, 500); // Altura mínima de 500px
     
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -3922,7 +5163,7 @@ function renderGanttChart() {
     const ctx = canvas.getContext('2d');
     
     // Filtrar demandas que têm prazo ou estão em andamento/revisão/concluído
-    const dashboardDemands = getDashboardDemands();
+    // (dashboardDemands já foi declarado acima)
     const ganttDemands = dashboardDemands.filter(d =>
         (d.status === 'andamento' || d.status === 'revisao' || d.status === 'concluido') && d.deadline
     );
@@ -3956,24 +5197,26 @@ function renderGanttChart() {
     
     const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
     
-    // Configurações
-    const padding = 40;
-    const labelWidth = 200;
+    // Configurações melhoradas
+    const padding = 50;
+    const labelWidth = 240;
     const chartWidth = canvas.width - labelWidth - padding * 2;
-    const rowHeight = 30;
-    const rowSpacing = 10;
-    const chartHeight = ganttDemands.length * (rowHeight + rowSpacing);
-    const startY = 60;
+    // rowHeight e rowSpacing já foram declarados acima
+    const chartHeight = ganttDemands.length * (rowHeight + rowSpacing) + rowSpacing;
+    const startY = 80;
     
     // Limpar canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Desenhar fundo
-    ctx.fillStyle = '#f8fafc';
+    // Desenhar fundo harmonizado
+    const bgGradient = ctx.createLinearGradient(labelWidth + padding, startY, labelWidth + padding, startY + chartHeight);
+    bgGradient.addColorStop(0, 'rgba(239, 246, 255, 0.6)');
+    bgGradient.addColorStop(1, 'rgba(219, 234, 254, 0.4)');
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(labelWidth + padding, startY, chartWidth, chartHeight);
     
-    // Desenhar grade de semanas
-    ctx.strokeStyle = '#e2e8f0';
+    // Desenhar grade de semanas elegante
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
     ctx.lineWidth = 1;
     
     let currentDate = new Date(minDate);
@@ -3989,13 +5232,49 @@ function renderGanttChart() {
         ctx.lineTo(x, startY + chartHeight);
         ctx.stroke();
         
-        // Label do dia
+            // Label do dia elegante
         if (daysDiff % 7 === 0 || daysDiff === 0) {
-            ctx.fillStyle = '#64748b';
-            ctx.font = '10px sans-serif';
-            ctx.textAlign = 'center';
             const dateStr = currentDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-            ctx.fillText(dateStr, x, startY - 10);
+            const textX = x;
+            const textY = startY - 12;
+            
+            // Fundo suave para a data
+            ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            const textWidth = ctx.measureText(dateStr).width;
+            const padding = 6;
+            
+            // Fundo com gradiente muito sutil
+            const bgGradient = ctx.createLinearGradient(textX - textWidth/2 - padding, textY - 8, textX - textWidth/2 - padding, textY + 2);
+            bgGradient.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+            bgGradient.addColorStop(1, 'rgba(239, 246, 255, 0.3)');
+            ctx.fillStyle = bgGradient;
+            
+            // Retângulo arredondado
+            const bgX = textX - textWidth/2 - padding;
+            const bgY = textY - 10;
+            const bgW = textWidth + padding * 2;
+            const bgH = 16;
+            const bgR = 8;
+            
+            ctx.beginPath();
+            ctx.moveTo(bgX + bgR, bgY);
+            ctx.lineTo(bgX + bgW - bgR, bgY);
+            ctx.quadraticCurveTo(bgX + bgW, bgY, bgX + bgW, bgY + bgR);
+            ctx.lineTo(bgX + bgW, bgY + bgH - bgR);
+            ctx.quadraticCurveTo(bgX + bgW, bgY + bgH, bgX + bgW - bgR, bgY + bgH);
+            ctx.lineTo(bgX + bgR, bgY + bgH);
+            ctx.quadraticCurveTo(bgX, bgY + bgH, bgX, bgY + bgH - bgR);
+            ctx.lineTo(bgX, bgY + bgR);
+            ctx.quadraticCurveTo(bgX, bgY, bgX + bgR, bgY);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Texto da data suave
+            ctx.fillStyle = '#475569';
+            ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(dateStr, textX, textY - 2);
         }
         
         currentDate.setDate(currentDate.getDate() + 1);
@@ -4009,28 +5288,94 @@ function renderGanttChart() {
         const x = labelWidth + padding + (daysDiff * dayWidth);
         
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.moveTo(x, startY - 20);
         ctx.lineTo(x, startY + chartHeight);
         ctx.stroke();
         
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 11px sans-serif';
+        // Label "Hoje" elegante
+        const hojeText = 'Hoje';
+        ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const hojeTextWidth = ctx.measureText(hojeText).width;
+        const hojePadding = 10;
+        const hojeX = x;
+        const hojeY = startY - 32;
+        
+        // Fundo vermelho suave
+        const hojeBgGradient = ctx.createLinearGradient(hojeX - hojeTextWidth/2 - hojePadding, hojeY - 8, hojeX - hojeTextWidth/2 - hojePadding, hojeY + 2);
+        hojeBgGradient.addColorStop(0, 'rgba(239, 68, 68, 0.7)');
+        hojeBgGradient.addColorStop(1, 'rgba(220, 38, 38, 0.6)');
+        ctx.fillStyle = hojeBgGradient;
+        
+        // Retângulo arredondado
+        const hojeBgX = hojeX - hojeTextWidth/2 - hojePadding;
+        const hojeBgY = hojeY - 10;
+        const hojeBgW = hojeTextWidth + hojePadding * 2;
+        const hojeBgH = 18;
+        const hojeBgR = 9;
+        
+        ctx.beginPath();
+        ctx.moveTo(hojeBgX + hojeBgR, hojeBgY);
+        ctx.lineTo(hojeBgX + hojeBgW - hojeBgR, hojeBgY);
+        ctx.quadraticCurveTo(hojeBgX + hojeBgW, hojeBgY, hojeBgX + hojeBgW, hojeBgY + hojeBgR);
+        ctx.lineTo(hojeBgX + hojeBgW, hojeBgY + hojeBgH - hojeBgR);
+        ctx.quadraticCurveTo(hojeBgX + hojeBgW, hojeBgY + hojeBgH, hojeBgX + hojeBgW - hojeBgR, hojeBgY + hojeBgH);
+        ctx.lineTo(hojeBgX + hojeBgR, hojeBgY + hojeBgH);
+        ctx.quadraticCurveTo(hojeBgX, hojeBgY + hojeBgH, hojeBgX, hojeBgY + hojeBgH - hojeBgR);
+        ctx.lineTo(hojeBgX, hojeBgY + hojeBgR);
+        ctx.quadraticCurveTo(hojeBgX, hojeBgY, hojeBgX + hojeBgR, hojeBgY);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Texto "Hoje" suave
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Hoje', x, startY - 25);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(hojeText, hojeX, hojeY - 1);
     }
     
     // Desenhar barras de Gantt
     ganttDemands.forEach((demand, index) => {
         const y = startY + index * (rowHeight + rowSpacing);
         
-        // Label da demanda
+        // Label da demanda elegante com fundo
+        const title = demand.title.length > 32 ? demand.title.substring(0, 29) + '...' : demand.title;
+        const labelX = 20;
+        const labelY = y + rowHeight / 2;
+        
+        // Fundo sutil para o label
+        ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const textWidth = ctx.measureText(title).width;
+        const labelPadding = 8;
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        const labelBgX = labelX - labelPadding;
+        const labelBgY = labelY - 10;
+        const labelBgW = textWidth + labelPadding * 2;
+        const labelBgH = 20;
+        const labelBgR = 6;
+        
+        ctx.beginPath();
+        ctx.moveTo(labelBgX + labelBgR, labelBgY);
+        ctx.lineTo(labelBgX + labelBgW - labelBgR, labelBgY);
+        ctx.quadraticCurveTo(labelBgX + labelBgW, labelBgY, labelBgX + labelBgW, labelBgY + labelBgR);
+        ctx.lineTo(labelBgX + labelBgW, labelBgY + labelBgH - labelBgR);
+        ctx.quadraticCurveTo(labelBgX + labelBgW, labelBgY + labelBgH, labelBgX + labelBgW - labelBgR, labelBgY + labelBgH);
+        ctx.lineTo(labelBgX + labelBgR, labelBgY + labelBgH);
+        ctx.quadraticCurveTo(labelBgX, labelBgY + labelBgH, labelBgX, labelBgY + labelBgH - labelBgR);
+        ctx.lineTo(labelBgX, labelBgY + labelBgR);
+        ctx.quadraticCurveTo(labelBgX, labelBgY, labelBgX + labelBgR, labelBgY);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Texto do label
         ctx.fillStyle = '#1e293b';
-        ctx.font = '11px sans-serif';
+        ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'left';
-        const title = demand.title.length > 25 ? demand.title.substring(0, 22) + '...' : demand.title;
-        ctx.fillText(title, 10, y + rowHeight / 2 + 4);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(title, labelX, labelY);
         
         // Calcular posição da barra
         const startDate = new Date(demand.createdAt);
@@ -4042,12 +5387,12 @@ function renderGanttChart() {
         const barX = labelWidth + padding + (startDays * dayWidth);
         const barWidth = (endDays - startDays) * dayWidth;
         
-        // Cor baseada no status
-        let color = '#2563eb'; // Azul padrão (em andamento)
+        // Cor baseada no status - usando paleta harmonizada
+        let color = '#4169E1'; // Azul Royal (em andamento)
         if (demand.status === 'revisao') {
             color = '#8b5cf6'; // Roxo
         } else if (demand.status === 'concluido') {
-            color = '#10b981'; // Verde
+            color = '#10b981'; // Verde esmeralda
         }
         
         // Verificar se está vencido
@@ -4056,48 +5401,79 @@ function renderGanttChart() {
             color = '#ef4444'; // Vermelho
         }
         
-        // Desenhar barra
-        ctx.fillStyle = color;
-        ctx.fillRect(barX, y, barWidth, rowHeight);
+        // Desenhar barra com gradiente elegante
+        const barGradient = ctx.createLinearGradient(barX, y, barX, y + rowHeight);
+        barGradient.addColorStop(0, color);
+        barGradient.addColorStop(1, isOverdue ? '#dc2626' : (demand.status === 'concluido' ? '#059669' : (demand.status === 'revisao' ? '#7c3aed' : '#2563eb')));
+        ctx.fillStyle = barGradient;
         
-        // Borda da barra
-        ctx.strokeStyle = '#ffffff';
+        // Desenhar barra com bordas arredondadas
+        const barRadius = 8;
+        ctx.beginPath();
+        ctx.moveTo(barX + barRadius, y);
+        ctx.lineTo(barX + barWidth - barRadius, y);
+        ctx.quadraticCurveTo(barX + barWidth, y, barX + barWidth, y + barRadius);
+        ctx.lineTo(barX + barWidth, y + rowHeight - barRadius);
+        ctx.quadraticCurveTo(barX + barWidth, y + rowHeight, barX + barWidth - barRadius, y + rowHeight);
+        ctx.lineTo(barX + barRadius, y + rowHeight);
+        ctx.quadraticCurveTo(barX, y + rowHeight, barX, y + rowHeight - barRadius);
+        ctx.lineTo(barX, y + barRadius);
+        ctx.quadraticCurveTo(barX, y, barX + barRadius, y);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Borda sutil da barra
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(barX, y, barWidth, rowHeight);
+        ctx.stroke();
         
-        // Indicador de início (bolinha)
+        // Indicador de início (bolinha elegante)
         ctx.beginPath();
-        ctx.arc(barX, y + rowHeight / 2, 4, 0, Math.PI * 2);
+        ctx.arc(barX, y + rowHeight / 2, 6, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.stroke();
         
-        // Indicador de fim (bolinha)
+        // Indicador de fim (bolinha elegante)
         ctx.beginPath();
-        ctx.arc(barX + barWidth, y + rowHeight / 2, 4, 0, Math.PI * 2);
+        ctx.arc(barX + barWidth, y + rowHeight / 2, 6, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
         ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.stroke();
         
-        // Texto na barra (se houver espaço)
-        if (barWidth > 60) {
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 9px sans-serif';
-            ctx.textAlign = 'center';
+        // Texto na barra elegante (se houver espaço)
+        if (barWidth > 100) {
             const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-            ctx.fillText(`${days} dia(s)`, barX + barWidth / 2, y + rowHeight / 2 + 3);
+            const daysText = `${days} dia${days !== 1 ? 's' : ''}`;
+            const textX = barX + barWidth / 2;
+            const textY = y + rowHeight / 2;
+            
+            // Texto branco elegante com sombra sutil
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = 3;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 1;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(daysText, textX, textY);
+            // Resetar sombra
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
         }
     });
     
-    // Título
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Cronograma de Demandas', 10, 30);
+    // Título elegante centralizado
+    ctx.fillStyle = '#1e40af';
+    ctx.font = '700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Gráfico de Gantt - Cronograma de Demandas', canvas.width / 2, 15);
 }
 
 function renderUrgentList() {
@@ -4154,7 +5530,8 @@ function populateResponsibleFilter() {
     const select = document.getElementById('filter-responsible');
     if (!select) return;
     
-    const responsibles = [...new Set(demands.map(d => d.responsible || 'Não atribuído'))];
+    // Filtrar apenas demandas não arquivadas para o seletor de responsáveis
+    const responsibles = [...new Set(demands.filter(d => !d.archived).map(d => d.responsible || 'Não atribuído'))];
     
     select.innerHTML = '<option value="all">Todos</option>' +
         responsibles.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
@@ -4189,10 +5566,10 @@ function applyFilters() {
     }
     
     // Filtrar por painéis selecionados - ATUALIZAR VARIÁVEL GLOBAL
-    // Se selectedPanelIds é null, mostrar todas as demandas
+    // Se selectedPanelIds é null, mostrar todas as demandas (excluir arquivadas)
     filteredDemands = selectedPanelIds === null 
-        ? [...demands] // Criar cópia do array
-        : demands.filter(d => d.panelId && selectedPanelIds.includes(d.panelId));
+        ? demands.filter(d => !d.archived) // Criar cópia do array excluindo arquivadas
+        : demands.filter(d => d.panelId && selectedPanelIds.includes(d.panelId) && !d.archived);
     
     // Filtro de status
     const statusFilter = document.getElementById('filter-status')?.value;
@@ -4507,17 +5884,25 @@ function renderReportStatusChart() {
         ctx.fillStyle = colors[index];
         ctx.fillRect(x, y, barWidth - 40, height);
         
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(value.toString(), x + (barWidth - 40) / 2, y - 5);
+        // Número branco sem fundo
+        const valueX = x + (barWidth - 40) / 2;
+        const valueY = y - 8;
+        const valueText = value.toString();
         
-        ctx.fillStyle = '#64748b';
-        ctx.font = '11px sans-serif';
-        ctx.fillText(labels[index], x + (barWidth - 40) / 2, startY + 20);
+        // Desenhar número preto sem fundo
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(valueText, valueX, valueY);
+        
+        // Label em preto
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[index], valueX, startY + 22);
     });
 }
-
 function renderReportPriorityChart() {
     const canvas = document.getElementById('report-priority-chart');
     if (!canvas) return;
@@ -4525,8 +5910,8 @@ function renderReportPriorityChart() {
     const ctx = canvas.getContext('2d');
     const priorities = ['baixa', 'media', 'alta', 'urgente'];
     const labels = ['Baixa', 'Média', 'Alta', 'Urgente'];
-    const colors = ['#d1fae5', '#fef3c7', '#fee2e2', '#fecaca'];
-    const textColors = ['#065f46', '#92400e', '#991b1b', '#7f1d1d'];
+    // Cores distintas e vibrantes para cada barra
+    const colors = ['#10b981', '#fbbf24', '#f59e0b', '#ef4444'];
     
     const data = priorities.map(p => filteredDemands.filter(d => d.priority === p).length);
     const max = Math.max(...data, 1);
@@ -4546,14 +5931,23 @@ function renderReportPriorityChart() {
         ctx.fillStyle = colors[index];
         ctx.fillRect(x, y, barWidth - 40, height);
         
-        ctx.fillStyle = textColors[index];
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(value.toString(), x + (barWidth - 40) / 2, y - 5);
+        // Número branco sem fundo
+        const valueX = x + (barWidth - 40) / 2;
+        const valueY = y - 8;
+        const valueText = value.toString();
         
-        ctx.fillStyle = '#64748b';
-        ctx.font = '11px sans-serif';
-        ctx.fillText(labels[index], x + (barWidth - 40) / 2, startY + 20);
+        // Desenhar número preto sem fundo
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(valueText, valueX, valueY);
+        
+        // Label em preto
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[index], valueX, startY + 22);
     });
 }
 
@@ -4727,16 +6121,28 @@ async function exportReportToPDF() {
     const margin = 15;
     const contentWidth = pageWidth - (margin * 2);
     
-    // Cabeçalho
+    // Cabeçalho com marca QualixFlow
     pdf.setFillColor(...primaryColor);
-    pdf.rect(margin, yPosition, contentWidth, 15, 'F');
+    pdf.rect(margin, yPosition, contentWidth, 20, 'F');
     
+    // Marca QualixFlow
     pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('QualixFlow', margin + 5, yPosition + 8);
+    
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Onde dados se transformam em cuidado.', margin + 5, yPosition + 13);
+    
+    // Título do relatório (alinhado à direita)
     pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Relatório de Qualidade', margin + 5, yPosition + 10);
+    const titleText = 'Relatório da Qualidade';
+    const titleWidth = pdf.getTextWidth(titleText);
+    pdf.text(titleText, pageWidth - margin - titleWidth, yPosition + 12);
     
-    yPosition += 20;
+    yPosition += 25;
     
     // Preparar data e hora para uso posterior
     const now = new Date();
@@ -4985,3 +6391,160 @@ async function exportReportToPDF() {
     pdf.save(fileName);
 }
 
+// ========== ARQUIVOS ==========
+
+// Renderizar arquivos
+function renderArchives() {
+    renderArchivedPanels();
+    renderArchivedDemands();
+}
+
+// Renderizar painéis arquivados
+function renderArchivedPanels() {
+    const container = document.getElementById('archived-panels-list');
+    if (!container) return;
+    
+    const archivedPanels = panels.filter(p => p.archived);
+    
+    if (archivedPanels.length === 0) {
+        container.innerHTML = '<p class="empty-message">Nenhum painel arquivado.</p>';
+        return;
+    }
+    
+    container.innerHTML = archivedPanels.map(panel => {
+        const archivedDate = panel.archivedAt ? new Date(panel.archivedAt).toLocaleDateString('pt-BR') : 'Data desconhecida';
+        return `
+            <div class="archived-item">
+                <div class="archived-item-info">
+                    <h4>${escapeHtml(panel.name)}</h4>
+                    <p class="archived-date">Arquivado em: ${archivedDate}</p>
+                </div>
+                <div class="archived-item-actions">
+                    <button class="btn-secondary" onclick="restorePanel(${panel.id})" title="Restaurar">
+                        ↺ Restaurar
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Renderizar demandas arquivadas
+function renderArchivedDemands() {
+    const container = document.getElementById('archived-demands-list');
+    if (!container) return;
+    
+    const archivedDemands = demands.filter(d => d.archived);
+    
+    if (archivedDemands.length === 0) {
+        container.innerHTML = '<p class="empty-message">Nenhuma demanda arquivada.</p>';
+        return;
+    }
+    
+    // Agrupar por painel
+    const demandsByPanel = {};
+    archivedDemands.forEach(demand => {
+        const panelId = demand.panelId || 'sem-painel';
+        if (!demandsByPanel[panelId]) {
+            demandsByPanel[panelId] = [];
+        }
+        demandsByPanel[panelId].push(demand);
+    });
+    
+    let html = '';
+    Object.keys(demandsByPanel).forEach(panelId => {
+        const panelDemands = demandsByPanel[panelId];
+        const panel = panelId !== 'sem-painel' ? panels.find(p => p.id === parseInt(panelId)) : null;
+        const panelName = panel ? panel.name : 'Sem painel';
+        
+        html += `<div class="archived-panel-group">
+            <h4 class="panel-group-title">${escapeHtml(panelName)}</h4>
+            <div class="archived-demands-grid">`;
+        
+        panelDemands.forEach(demand => {
+            const archivedDate = demand.archivedAt ? new Date(demand.archivedAt).toLocaleDateString('pt-BR') : 'Data desconhecida';
+            const statusLabels = {
+                'pendente': 'Pendente',
+                'andamento': 'Em Andamento',
+                'revisao': 'Em Revisão',
+                'concluido': 'Concluído'
+            };
+            const statusLabel = statusLabels[demand.status] || demand.status;
+            
+            html += `
+                <div class="archived-item">
+                    <div class="archived-item-info">
+                        <h4>${escapeHtml(demand.title)}</h4>
+                        <p class="archived-meta">
+                            <span class="status-badge status-${demand.status}">${statusLabel}</span>
+                            <span class="archived-date">Arquivado em: ${archivedDate}</span>
+                        </p>
+                    </div>
+                    <div class="archived-item-actions">
+                        <button class="btn-secondary" onclick="restoreDemand(${demand.id})" title="Restaurar">
+                            ↺ Restaurar
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div></div>`;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Restaurar painel
+window.restorePanel = function(panelId) {
+    const panel = panels.find(p => p.id === panelId);
+    if (!panel) return;
+    
+    if (confirm(`Tem certeza que deseja restaurar o painel "${panel.name}"?`)) {
+        panel.archived = false;
+        panel.archivedAt = null;
+        
+        // Restaurar também as demandas do painel
+        demands.forEach(d => {
+            if (d.panelId === panelId && d.archived) {
+                d.archived = false;
+                d.archivedAt = null;
+            }
+        });
+        
+        savePanels();
+        saveDemands();
+        renderArchives();
+        renderPanelSelector();
+        renderKanban();
+        updateCardCounts();
+    }
+};
+
+// Restaurar demanda
+window.restoreDemand = function(demandId) {
+    const demand = demands.find(d => d.id === demandId);
+    if (!demand) return;
+    
+    if (confirm(`Tem certeza que deseja restaurar a demanda "${demand.title}"?`)) {
+        demand.archived = false;
+        demand.archivedAt = null;
+        
+        // Se o painel estiver arquivado, restaurar também
+        if (demand.panelId) {
+            const panel = panels.find(p => p.id === demand.panelId);
+            if (panel && panel.archived) {
+                panel.archived = false;
+                panel.archivedAt = null;
+                savePanels();
+                renderPanelSelector();
+            }
+        }
+        
+        saveDemands();
+        renderArchives();
+        renderKanban();
+        updateCardCounts();
+        updateDashboard();
+    }
+};

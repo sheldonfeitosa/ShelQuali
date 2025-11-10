@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QualixFlow - Onde dados se transformam em cuidado</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0f172a;
+            color: #f1f5f9;
+            overflow-x: hidden;
+        }
+
+        /* Header/Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 1rem 2rem;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .navbar-logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .navbar-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn-login {
+            padding: 0.625rem 1.5rem;
+            background: transparent;
+            border: 2px solid #6366f1;
+            color: #6366f1;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            background: #6366f1;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 8rem 2rem 4rem;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
+            z-index: 0;
+        }
+
+        .hero-content {
+            max-width: 1200px;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero-text {
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .hero-text h2 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-text p {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            line-height: 1.8;
+            margin-bottom: 2rem;
+        }
+
+        .hero-features {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #cbd5e1;
+        }
+
+        .feature-item::before {
+            content: '✓';
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
+            border-radius: 50%;
+            color: white;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* Form Section */
+        .signup-form-container {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: fadeInUp 1s ease 0.2s both;
+        }
+
+        .signup-form-container h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .signup-form-container p {
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #cbd5e1;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .form-group input::placeholder {
+            color: #64748b;
+        }
+
+        .btn-signup {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-signup::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-signup:hover::before {
+            left: 100%;
+        }
+
+        .btn-signup:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-signup:active {
+            transform: translateY(0);
+        }
+
+        .success-message,
+        .error-message {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .success-message {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #10b981;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+        }
+
+        .success-message.show,
+        .error-message.show {
+            display: block;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 6rem 2rem;
+            background: rgba(15, 23, 42, 0.5);
+            position: relative;
+        }
+
+        .features-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .features-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .features-header h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .features-header p {
+            font-size: 1.125rem;
+            color: #94a3b8;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
+        }
+
+        .feature-card-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: #f1f5f9;
+        }
+
+        .feature-card p {
+            color: #94a3b8;
+            line-height: 1.7;
+        }
+
+        /* Footer */
+        .footer {
+            background: rgba(15, 23, 42, 0.8);
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 3rem 2rem;
+            text-align: center;
+            color: #94a3b8;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 968px) {
+            .hero-content {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            .hero-text h2 {
+                font-size: 2.5rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .navbar {
+                padding: 1rem;
+            }
+
+            .hero {
+                padding: 6rem 1rem 3rem;
+            }
+
+            .hero-text h2 {
+                font-size: 2rem;
+            }
+
+            .signup-form-container {
+                padding: 2rem 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-logo">
+            <h1>QualixFlow</h1>
+        </div>
+        <div class="navbar-actions">
+            <a href="login.html" class="btn-login">Entrar</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-text">
+                <h2>Transforme dados em cuidado com QualixFlow</h2>
+                <p>
+                    Plataforma completa para gestão de qualidade, demandas e processos. 
+                    Simplifique sua operação e eleve seus resultados.
+                </p>
+                
+                <div class="hero-features">
+                    <div class="feature-item">
+                        <span>Gestão completa de demandas e processos</span>
+                    </div>
+                    <div class="feature-item">
+                        <span>Relatórios e dashboards em tempo real</span>
+                    </div>
+                    <div class="feature-item">
+                        <span>Colaboração em equipe integrada</span>
+                    </div>
+                    <div class="feature-item">
+                        <span>Interface moderna e intuitiva</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signup Form -->
+            <div class="signup-form-container">
+                <h3>Crie sua conta</h3>
+                <p>Comece agora e transforme sua gestão de qualidade</p>
+                
+                <form id="signup-form">
+                    <div class="form-group">
+                        <label for="signup-name">Nome Completo</label>
+                        <input 
+                            type="text" 
+                            id="signup-name" 
+                            name="name" 
+                            required 
+                            placeholder="Seu nome completo"
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="signup-email">E-mail</label>
+                        <input 
+                            type="email" 
+                            id="signup-email" 
+                            name="email" 
+                            required 
+                            placeholder="seu@email.com"
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="signup-username">Usuário</label>
+                        <input 
+                            type="text" 
+                            id="signup-username" 
+                            name="username" 
+                            required 
+                            placeholder="Escolha um nome de usuário"
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="signup-password">Senha</label>
+                        <input 
+                            type="password" 
+                            id="signup-password" 
+                            name="password" 
+                            required 
+                            placeholder="Mínimo 6 caracteres"
+                            minlength="6"
+                        >
+                    </div>
+                    
+                    <button type="submit" class="btn-signup">
+                        Criar Conta Gratuita
+                    </button>
+                    
+                    <div id="success-message" class="success-message"></div>
+                    <div id="error-message" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <div class="features-container">
+            <div class="features-header">
+                <h2>Por que escolher QualixFlow?</h2>
+                <p>Tudo que você precisa para uma gestão de qualidade eficiente</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-card-icon">📊</div>
+                    <h3>Dashboards Inteligentes</h3>
+                    <p>
+                        Visualize métricas importantes em tempo real com gráficos interativos 
+                        e relatórios personalizados que ajudam na tomada de decisão.
+                    </p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-card-icon">✅</div>
+                    <h3>Gestão de Demandas</h3>
+                    <p>
+                        Organize e acompanhe todas as demandas em um sistema Kanban intuitivo 
+                        com priorização, prazos e acompanhamento de progresso.
+                    </p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-card-icon">👥</div>
+                    <h3>Colaboração em Equipe</h3>
+                    <p>
+                        Trabalhe em conjunto com sua equipe através de chat integrado, 
+                        atribuição de tarefas e notificações em tempo real.
+                    </p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-card-icon">📈</div>
+                    <h3>Relatórios Avançados</h3>
+                    <p>
+                        Gere relatórios profissionais em PDF com análises detalhadas, 
+                        estatísticas descritivas e gráficos para apresentações.
+                    </p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-card-icon">🔔</div>
+                    <h3>Notificações Inteligentes</h3>
+                    <p>
+                        Receba alertas sobre prazos, mudanças de status e atualizações 
+                        importantes para nunca perder nenhuma informação.
+                    </p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-card-icon">🔒</div>
+                    <h3>Segurança e Privacidade</h3>
+                    <p>
+                        Seus dados estão protegidos com criptografia e controle de acesso, 
+                        garantindo a segurança das informações da sua organização.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2025 QualixFlow. Desenvolvido por <strong>Sheldon Feitosa</strong></p>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Onde dados se transformam em cuidado.</p>
+    </footer>
+
+    <script>
+        const signupForm = document.getElementById('signup-form');
+        const successMessage = document.getElementById('success-message');
+        const errorMessage = document.getElementById('error-message');
+
+        // Carregar usuários existentes
+        let users = JSON.parse(localStorage.getItem('qualishel_users') || '[]');
+
+        // Se não houver usuários, criar usuários padrão
+        if (users.length === 0) {
+            users = [
+                { username: 'admin', password: 'admin123', name: 'Administrador', email: 'admin@qualixflow.com' },
+                { username: 'qualishel', password: 'qualishel123', name: 'Qualishel', email: 'qualishel@qualixflow.com' }
+            ];
+            localStorage.setItem('qualishel_users', JSON.stringify(users));
+        }
+
+        signupForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            // Limpar mensagens anteriores
+            successMessage.classList.remove('show');
+            errorMessage.classList.remove('show');
+            
+            const name = document.getElementById('signup-name').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const username = document.getElementById('signup-username').value.trim();
+            const password = document.getElementById('signup-password').value;
+
+            // Validações
+            if (password.length < 6) {
+                errorMessage.textContent = 'A senha deve ter no mínimo 6 caracteres.';
+                errorMessage.classList.add('show');
+                return;
+            }
+
+            // Verificar se o usuário já existe
+            const userExists = users.find(u => u.username === username || u.email === email);
+            if (userExists) {
+                errorMessage.textContent = 'Usuário ou e-mail já cadastrado. Tente fazer login ou use outros dados.';
+                errorMessage.classList.add('show');
+                return;
+            }
+
+            // Criar novo usuário
+            const newUser = {
+                username: username,
+                password: password,
+                name: name,
+                email: email,
+                createdAt: new Date().toISOString()
+            };
+
+            users.push(newUser);
+            localStorage.setItem('qualishel_users', JSON.stringify(users));
+
+            // Mostrar mensagem de sucesso
+            successMessage.textContent = 'Conta criada com sucesso! Redirecionando para o login...';
+            successMessage.classList.add('show');
+
+            // Limpar formulário
+            signupForm.reset();
+
+            // Redirecionar para login após 2 segundos
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
+        });
+
+        // Validação em tempo real do username
+        document.getElementById('signup-username').addEventListener('input', (e) => {
+            const username = e.target.value.trim();
+            const userExists = users.find(u => u.username === username);
+            
+            if (userExists) {
+                e.target.setCustomValidity('Este nome de usuário já está em uso.');
+            } else {
+                e.target.setCustomValidity('');
+            }
+        });
+
+        // Validação em tempo real do email
+        document.getElementById('signup-email').addEventListener('input', (e) => {
+            const email = e.target.value.trim();
+            const emailExists = users.find(u => u.email === email);
+            
+            if (emailExists) {
+                e.target.setCustomValidity('Este e-mail já está cadastrado.');
+            } else {
+                e.target.setCustomValidity('');
+            }
+        });
+    </script>
+</body>
+</html>
+

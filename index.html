@@ -2,14 +2,17 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qualishel - Escritório da Qualidade</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>QualixFlow - Onde dados se transformam em cuidado.</title>
     <link rel="stylesheet" href="styles.css">
     <!-- Bibliotecas para geração de PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- Biblioteca para envio de e-mails -->
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <!-- Google API Client Library -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client"></script>
     <!-- Firebase Config: Inicializar inline imediatamente -->
     <script type="module">
         (async function() {
@@ -78,12 +81,23 @@
     <header class="main-header">
         <div class="header-content">
             <div class="logo">
-                <h1>Qualishel</h1>
-                <span class="subtitle">Escritório da Qualidade</span>
+                <h1>QualixFlow</h1>
+                <span class="subtitle">Onde dados se transformam em cuidado.</span>
             </div>
             <nav class="main-nav">
                 <div class="panel-selector">
-                    <select id="panel-selector" class="panel-select">
+                    <div class="custom-panel-select" id="panel-selector-custom">
+                        <div class="custom-select-trigger" id="panel-selector-trigger">
+                            <span class="custom-select-value">Selecione um painel...</span>
+                            <span class="custom-select-arrow">▼</span>
+                        </div>
+                        <div class="custom-select-dropdown" id="panel-selector-dropdown">
+                            <div class="custom-select-options" id="panel-selector-options">
+                                <!-- Opções serão preenchidas via JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    <select id="panel-selector" class="panel-select" style="display: none;">
                         <option value="">Selecione um painel...</option>
                     </select>
                     <button class="btn-secondary" id="new-panel-btn" title="Novo Painel">
@@ -98,11 +112,10 @@
                     <li><a href="#" class="nav-link active" data-page="kanban">Kanban</a></li>
                     <li><a href="#" class="nav-link" data-page="dashboard">Dashboard</a></li>
                     <li><a href="#" class="nav-link" data-page="relatorios">Relatórios</a></li>
+                    <li><a href="#" class="nav-link" data-page="arquivos">📦 Arquivos</a></li>
                     <li><a href="#" class="nav-link" data-page="configuracoes">Configurações</a></li>
+                    <li><a href="#" class="nav-link" id="logout-btn" title="Sair">🚪 Sair</a></li>
                 </ul>
-                <button class="btn-logout" id="logout-btn" title="Sair">
-                    🚪 Sair
-                </button>
             </nav>
         </div>
     </header>
@@ -278,19 +291,19 @@
                 </div>
                 <div class="gantt-legend">
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #2563eb;"></span>
+                        <span class="legend-color" style="background: linear-gradient(135deg, #4169E1 0%, #2563eb 100%);"></span>
                         <span>Em Andamento</span>
                     </div>
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #8b5cf6;"></span>
+                        <span class="legend-color" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);"></span>
                         <span>Em Revisão</span>
                     </div>
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #10b981;"></span>
+                        <span class="legend-color" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"></span>
                         <span>Concluído</span>
                     </div>
                     <div class="legend-item">
-                        <span class="legend-color" style="background: #ef4444;"></span>
+                        <span class="legend-color" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);"></span>
                         <span>Prazo Vencido</span>
                     </div>
                 </div>
@@ -513,6 +526,32 @@
         </section>
 
         <!-- Página de Configurações -->
+        <!-- Página de Arquivos -->
+        <section id="arquivos-page" class="page">
+            <div class="page-header">
+                <h2>📦 Arquivos</h2>
+                <p class="page-subtitle">Itens arquivados podem ser restaurados a qualquer momento</p>
+            </div>
+            
+            <div class="archives-container">
+                <!-- Painéis Arquivados -->
+                <div class="archive-section">
+                    <h3>Painéis Arquivados</h3>
+                    <div id="archived-panels-list" class="archived-items-list">
+                        <!-- Lista será preenchida via JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- Demandas Arquivadas -->
+                <div class="archive-section">
+                    <h3>Demandas Arquivadas</h3>
+                    <div id="archived-demands-list" class="archived-items-list">
+                        <!-- Lista será preenchida via JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section id="configuracoes-page" class="page">
             <div class="page-header">
                 <h2>Configurações</h2>
@@ -698,7 +737,72 @@
                             <button type="button" class="btn-secondary" id="test-email-btn">
                                 ✉️ Testar Envio de E-mail
                             </button>
+                            <button type="button" class="btn-secondary" id="test-invite-link-btn">
+                                🔗 Testar Link de Convite
+                            </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuração do Google Calendar -->
+            <div class="settings-section">
+                <div class="settings-header">
+                    <h3>📅 Integração com Google Agenda</h3>
+                    <span class="settings-status" id="google-calendar-status">Não conectado</span>
+                </div>
+                
+                <div class="settings-content">
+                    <div class="settings-info">
+                        <p>Conecte sua conta do Google para que os prazos sejam adicionados automaticamente ao seu Google Calendar quando você definir um prazo em uma demanda.</p>
+                        <div class="info-box" style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-top: 1rem; border-radius: 6px;">
+                            <strong>⚠️ Configuração necessária:</strong> Você precisa configurar um Client ID do Google. Veja o arquivo <code>GOOGLE_CALENDAR_SETUP.md</code> para instruções detalhadas.
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="google-calendar-client-id">
+                            Google Client ID
+                            <span class="required">*</span>
+                        </label>
+                        <input type="text" 
+                               id="google-calendar-client-id" 
+                               placeholder="Ex: 123456789-abc.apps.googleusercontent.com" 
+                               class="settings-input">
+                        <small class="form-help">
+                            Client ID obtido no Google Cloud Console. Veja <code>GOOGLE_CALENDAR_SETUP.md</code> para instruções.
+                        </small>
+                    </div>
+                    
+                    <div class="settings-actions" style="margin-bottom: 1rem;">
+                        <button type="button" class="btn-primary" id="save-google-calendar-client-id-btn">
+                            💾 Salvar Client ID
+                        </button>
+                    </div>
+                    
+                    <div id="google-calendar-connection-status" class="connection-status">
+                        <div id="google-calendar-not-connected" style="display: none;">
+                            <p style="color: #6b7280; margin-bottom: 1rem;">Você não está conectado ao Google Calendar.</p>
+                            <button type="button" class="btn-primary" id="connect-google-calendar-btn">
+                                🔗 Conectar com Google
+                            </button>
+                        </div>
+                        <div id="google-calendar-connected" style="display: none;">
+                            <p style="color: #10b981; margin-bottom: 1rem;">
+                                ✅ Conectado como: <span id="google-calendar-user-email"></span>
+                            </p>
+                            <button type="button" class="btn-secondary" id="disconnect-google-calendar-btn">
+                                🔌 Desconectar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="auto-add-to-calendar" checked>
+                            <span>📅 Adicionar automaticamente ao Google Calendar</span>
+                        </label>
+                        <small class="form-help">Quando habilitado, os prazos serão criados automaticamente no seu Google Calendar sem precisar confirmar</small>
                     </div>
                 </div>
             </div>
@@ -716,6 +820,14 @@
                         </label>
                         <input type="text" id="user-name" placeholder="Seu nome aparecerá nas mensagens do chat" class="settings-input">
                         <small class="form-help">Este nome será usado nas mensagens do chat e notificações</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="notifications-enabled" checked>
+                            <span>📧 Enviar notificações por e-mail aos colaboradores</span>
+                        </label>
+                        <small class="form-help">Quando habilitado, os colaboradores receberão e-mails quando houver novas mensagens, tarefas ou alterações na demanda</small>
                     </div>
                     
                     <div class="settings-actions">
@@ -767,7 +879,7 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="cancel-btn">Cancelar</button>
-                    <button type="submit" class="btn-primary">Criar Demanda</button>
+                    <button type="submit" class="btn-primary" id="submit-demand-btn">Criar Demanda</button>
                 </div>
             </form>
         </div>
@@ -798,6 +910,13 @@
                     <div id="deadline-context-info" class="deadline-context-info"></div>
                     <textarea id="deadline-reason" rows="4" required placeholder="Explique o motivo da alteração do prazo..."></textarea>
                     <small class="form-help">Este campo é obrigatório para garantir rastreabilidade das mudanças de prazo.</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="add-to-google-calendar" checked>
+                        <span>📅 Adicionar ao Google Agenda</span>
+                    </label>
+                    <small class="form-help">Quando marcado, o prazo será adicionado ao seu Google Calendar automaticamente</small>
                 </div>
                 <div id="deadline-history-section" class="deadline-history-section" style="display: none;">
                     <h4>Histórico de Alterações de Prazo</h4>
