@@ -61,28 +61,33 @@ async function saveDemandsToStorage(demands, counter) {
 // Função para carregar demandas (usa Firebase se disponível, senão localStorage)
 async function loadDemandsFromStorage() {
     const userId = getCurrentUserId();
+    console.log(`🔍 Carregando demandas do Firebase para userId: ${userId}`);
     
     if (firebaseInitialized && db) {
         try {
             const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const docSnap = await getDoc(doc(db, 'users', userId, 'data', 'demands'));
+            const docRef = doc(db, 'users', userId, 'data', 'demands');
+            console.log(`📂 Caminho do documento: users/${userId}/data/demands`);
+            const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log(`✅ Demandas carregadas do Firebase para usuário: ${userId}`);
+                const demandsCount = data.demands ? data.demands.length : 0;
+                console.log(`✅ Demandas carregadas do Firebase para usuário ${userId}: ${demandsCount} demandas`);
                 return {
                     demands: data.demands || [],
                     counter: data.counter || 1
                 };
             }
-            console.log(`ℹ️ Nenhuma demanda encontrada para usuário: ${userId}`);
+            console.log(`ℹ️ Nenhuma demanda encontrada no Firebase para usuário: ${userId}`);
             return { demands: [], counter: 1 };
         } catch (error) {
-            console.error('Erro ao carregar do Firebase:', error);
+            console.error(`❌ Erro ao carregar do Firebase para usuário ${userId}:`, error);
             // Fallback para localStorage
             return loadDemandsFromLocalStorage();
         }
     } else {
+        console.log(`ℹ️ Firebase não inicializado, usando localStorage`);
         return loadDemandsFromLocalStorage();
     }
 }
@@ -103,8 +108,26 @@ function saveDemandsToLocalStorage(demands, counter) {
 function loadDemandsFromLocalStorage() {
     try {
         const userId = getCurrentUserId();
+        console.log(`🔍 Buscando demandas no localStorage com chave: qualishel-demands-${userId}`);
+        
+        // Limpar dados antigos (chaves sem userId) se existirem
+        const oldKeys = ['qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'];
+        oldKeys.forEach(key => {
+            if (localStorage.getItem(key)) {
+                console.log(`🧹 Removendo chave antiga: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+        
         const saved = localStorage.getItem(`qualishel-demands-${userId}`);
         const counter = localStorage.getItem(`qualishel-demand-counter-${userId}`);
+        
+        if (saved) {
+            console.log(`✅ Demandas encontradas no localStorage para usuário ${userId}`);
+        } else {
+            console.log(`ℹ️ Nenhuma demanda encontrada no localStorage para usuário ${userId}`);
+        }
+        
         return {
             demands: saved ? JSON.parse(saved) : [],
             counter: counter ? parseInt(counter) : 1
@@ -157,6 +180,12 @@ async function loadPeopleFromStorage() {
             return saved ? JSON.parse(saved) : [];
         }
     } else {
+        // Limpar chave antiga se existir
+        if (localStorage.getItem('qualishel-people')) {
+            console.log(`🧹 Removendo chave antiga: qualishel-people`);
+            localStorage.removeItem('qualishel-people');
+        }
+        
         const saved = localStorage.getItem(`qualishel-people-${userId}`);
         return saved ? JSON.parse(saved) : [];
     }
@@ -255,29 +284,34 @@ async function savePanelsToStorage(panels, counter, currentPanelId) {
 // Carregar painéis
 async function loadPanelsFromStorage() {
     const userId = getCurrentUserId();
+    console.log(`🔍 Carregando painéis do Firebase para userId: ${userId}`);
     
     if (firebaseInitialized && db) {
         try {
             const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const docSnap = await getDoc(doc(db, 'users', userId, 'data', 'panels'));
+            const docRef = doc(db, 'users', userId, 'data', 'panels');
+            console.log(`📂 Caminho do documento: users/${userId}/data/panels`);
+            const docSnap = await getDoc(docRef);
             
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log(`✅ Painéis carregados do Firebase para usuário: ${userId}`);
+                const panelsCount = data.panels ? data.panels.length : 0;
+                console.log(`✅ Painéis carregados do Firebase para usuário ${userId}: ${panelsCount} painéis`);
                 return {
                     panels: data.panels || [],
                     counter: data.counter || 1,
                     currentPanelId: data.currentPanelId || null
                 };
             }
-            console.log(`ℹ️ Nenhum painel encontrado para usuário: ${userId}`);
+            console.log(`ℹ️ Nenhum painel encontrado no Firebase para usuário: ${userId}`);
             return { panels: [], counter: 1, currentPanelId: null };
         } catch (error) {
-            console.error('Erro ao carregar painéis do Firebase:', error);
+            console.error(`❌ Erro ao carregar painéis do Firebase para usuário ${userId}:`, error);
             // Fallback para localStorage
             return loadPanelsFromLocalStorage();
         }
     } else {
+        console.log(`ℹ️ Firebase não inicializado, usando localStorage`);
         return loadPanelsFromLocalStorage();
     }
 }
@@ -299,9 +333,27 @@ function savePanelsToLocalStorage(panels, counter, currentPanelId) {
 function loadPanelsFromLocalStorage() {
     try {
         const userId = getCurrentUserId();
+        console.log(`🔍 Buscando painéis no localStorage com chave: qualishel-panels-${userId}`);
+        
+        // Limpar dados antigos (chaves sem userId) se existirem
+        const oldKeys = ['qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel'];
+        oldKeys.forEach(key => {
+            if (localStorage.getItem(key)) {
+                console.log(`🧹 Removendo chave antiga: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+        
         const saved = localStorage.getItem(`qualishel-panels-${userId}`);
         const counter = localStorage.getItem(`qualishel-panel-counter-${userId}`);
         const currentPanel = localStorage.getItem(`qualishel-current-panel-${userId}`);
+        
+        if (saved) {
+            console.log(`✅ Painéis encontrados no localStorage para usuário ${userId}`);
+        } else {
+            console.log(`ℹ️ Nenhum painel encontrado no localStorage para usuário ${userId}`);
+        }
+        
         return {
             panels: saved ? JSON.parse(saved) : [],
             counter: counter ? parseInt(counter) : 1,

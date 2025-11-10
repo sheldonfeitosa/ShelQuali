@@ -185,13 +185,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         const currentUser = localStorage.getItem('qualishel_current_user');
         console.log(`👤 Carregando dados para usuário: ${currentUser}`);
         
-        // Limpar dados antes de carregar (garantir isolamento)
+        // Limpar dados da memória antes de carregar (garantir isolamento)
         panels = [];
         demands = [];
         currentPanelId = null;
         panelIdCounter = 1;
         demandIdCounter = 1;
         availablePeople = [];
+        
+        // Limpar dados antigos do localStorage (chaves sem userId) para evitar confusão
+        const oldKeys = [
+            'qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel',
+            'qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'
+        ];
+        oldKeys.forEach(key => {
+            if (localStorage.getItem(key)) {
+                console.log(`🧹 Removendo chave antiga do localStorage: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
         
         await loadPanels();
         await loadDemands();
