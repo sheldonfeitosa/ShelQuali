@@ -12,7 +12,9 @@ function getCurrentUserId() {
         return 'guest';
     }
     // Usar o username como ID do usuário (pode ser melhorado com hash)
-    return currentUser.toLowerCase().replace(/\s+/g, '_');
+    const userId = currentUser.toLowerCase().replace(/\s+/g, '_');
+    console.log(`🔑 UserId gerado: ${userId} (de username: ${currentUser})`);
+    return userId;
 }
 
 // Verificar se Firebase está disponível

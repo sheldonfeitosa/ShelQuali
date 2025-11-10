@@ -409,11 +409,16 @@
 
             if (user) {
                 // Autenticação bem-sucedida
+                // Limpar dados da sessão anterior para garantir isolamento
+                sessionStorage.removeItem('qualishel_last_user');
+                
                 localStorage.setItem('qualishel_authenticated', 'true');
                 localStorage.setItem('qualishel_current_user', username);
                 
-                // Redirecionar para a aplicação
-                window.location.href = 'index.html';
+                console.log(`✅ Login realizado para usuário: ${username}`);
+                
+                // Redirecionar para a aplicação (com reload forçado para limpar cache)
+                window.location.href = 'index.html?t=' + Date.now();
             } else {
                 // Mostrar erro
                 errorMessage.textContent = 'Usuário ou senha incorretos. Tente novamente.';

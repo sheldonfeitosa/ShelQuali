@@ -94,11 +94,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lastUser = sessionStorage.getItem('qualishel_last_user');
     const currentUser = localStorage.getItem('qualishel_current_user');
     if (lastUser && lastUser !== currentUser) {
-        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. Recarregando dados...`);
+        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. Limpando e recarregando dados...`);
         // Limpar listeners anteriores
         if (typeof window.firebaseService !== 'undefined') {
             window.firebaseService.removeAllListeners();
         }
+        // LIMPAR DADOS ANTIGOS DA MEMÓRIA (importante para isolamento)
+        panels = [];
+        demands = [];
+        currentPanelId = null;
+        panelIdCounter = 1;
+        demandIdCounter = 1;
+        availablePeople = [];
         // Atualizar exibição do nome do usuário
         updateUserNameDisplay();
     }
@@ -174,8 +181,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         cancelPanelFormBtn = document.getElementById('cancel-panel-form-btn');
         createPanelBtn = document.getElementById('create-panel-btn');
         
+        // Garantir que os dados estão limpos antes de carregar (isolamento por usuário)
+        const currentUser = localStorage.getItem('qualishel_current_user');
+        console.log(`👤 Carregando dados para usuário: ${currentUser}`);
+        
+        // Limpar dados antes de carregar (garantir isolamento)
+        panels = [];
+        demands = [];
+        currentPanelId = null;
+        panelIdCounter = 1;
+        demandIdCounter = 1;
+        availablePeople = [];
+        
         await loadPanels();
         await loadDemands();
+        
+        console.log(`📊 Dados carregados - Painéis: ${panels.length}, Demandas: ${demands.length}`);
         // Corrigir cards sem panelId válido após carregar painéis
         fixCardsWithoutPanelId();
         renderPanelSelector();
@@ -2298,8 +2319,13 @@ async function loadPanels() {
     // Sempre usar firebase-service (que gerencia isolamento por usuário)
     if (typeof window.firebaseService !== 'undefined') {
         try {
+            const currentUser = localStorage.getItem('qualishel_current_user');
+            console.log(`📥 Carregando painéis para usuário: ${currentUser}`);
             savedData = await window.firebaseService.loadPanelsFromStorage();
-            console.log('✅ Painéis carregados');
+            console.log(`✅ Painéis carregados: ${savedData.panels.length} painéis encontrados`);
+            if (savedData.panels.length > 0) {
+                console.log(`📋 IDs dos painéis:`, savedData.panels.map(p => `${p.id}: ${p.name}`));
+            }
         } catch (error) {
             console.warn('Erro ao carregar painéis:', error);
             // Retornar dados vazios se houver erro
@@ -2307,10 +2333,13 @@ async function loadPanels() {
         }
     }
     
-    panels = savedData.panels;
-    panelIdCounter = savedData.counter;
+    // SEMPRE substituir os dados (não adicionar)
+    panels = savedData.panels || [];
+    panelIdCounter = savedData.counter || 1;
     if (savedData.currentPanelId) {
         currentPanelId = savedData.currentPanelId;
+    } else {
+        currentPanelId = null;
     }
     
     // Se não houver painéis, criar um padrão
@@ -2387,9 +2416,14 @@ async function loadDemands() {
     // Sempre usar firebase-service (que gerencia isolamento por usuário)
     if (typeof window.firebaseService !== 'undefined') {
         try {
+            const currentUser = localStorage.getItem('qualishel_current_user');
+            console.log(`📥 Carregando demandas para usuário: ${currentUser}`);
             savedData = await window.firebaseService.loadDemandsFromStorage();
             savedPeople = await window.firebaseService.loadPeopleFromStorage();
-            console.log('✅ Dados carregados');
+            console.log(`✅ Demandas carregadas: ${savedData.demands.length} demandas encontradas`);
+            if (savedData.demands.length > 0) {
+                console.log(`📋 IDs das demandas:`, savedData.demands.map(d => `${d.id}: ${d.title}`));
+            }
         } catch (error) {
             console.warn('Erro ao carregar dados:', error);
             // Retornar dados vazios se houver erro
@@ -2398,8 +2432,9 @@ async function loadDemands() {
         }
     }
     
-    demands = savedData.demands;
-    demandIdCounter = savedData.counter;
+    // SEMPRE substituir os dados (não adicionar)
+    demands = savedData.demands || [];
+    demandIdCounter = savedData.counter || 1;
     
     // Log para debug de convites
     console.log(`📦 Demandas carregadas: ${demands.length}`);
