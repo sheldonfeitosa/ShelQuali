@@ -94,13 +94,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lastUser = sessionStorage.getItem('qualishel_last_user');
     const currentUser = localStorage.getItem('qualishel_current_user');
     if (lastUser && lastUser !== currentUser) {
-        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. Limpando e recarregando dados...`);
-        // Limpar listeners anteriores ANTES de limpar dados
+        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. LIMPANDO TUDO e recarregando dados...`);
+        
+        // 1. Limpar listeners anteriores ANTES de limpar dados
         if (typeof window.firebaseService !== 'undefined') {
             console.log('🛑 Removendo todos os listeners do usuário anterior...');
             window.firebaseService.removeAllListeners();
         }
-        // LIMPAR DADOS ANTIGOS DA MEMÓRIA (importante para isolamento)
+        
+        // 2. LIMPAR DADOS ANTIGOS DA MEMÓRIA (importante para isolamento)
         panels = [];
         demands = [];
         currentPanelId = null;
@@ -108,8 +110,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         demandIdCounter = 1;
         availablePeople = [];
         isUpdatingFromRealtime = false; // Resetar flag de sincronização
-        // Atualizar exibição do nome do usuário
+        
+        // 3. LIMPAR TODAS AS CHAVES DO LOCALSTORAGE (exceto autenticação e usuário atual)
+        console.log('🧹 Limpando localStorage de dados antigos...');
+        const keysToKeep = ['qualishel_authenticated', 'qualishel_current_user', 'qualishel_users'];
+        const allKeys = Object.keys(localStorage);
+        allKeys.forEach(key => {
+            if (!keysToKeep.includes(key) && key.startsWith('qualishel-')) {
+                console.log(`🗑️ Removendo chave do localStorage: ${key}`);
+                localStorage.removeItem(key);
+            }
+        });
+        
+        // 4. Limpar interface visual
+        const columns = ['pendente', 'andamento', 'revisao', 'concluido'];
+        columns.forEach(status => {
+            const column = document.getElementById(`column-${status}`);
+            if (column) {
+                column.innerHTML = '';
+            }
+        });
+        
+        // 5. Atualizar exibição do nome do usuário
         updateUserNameDisplay();
+        
+        console.log('✅ Limpeza completa concluída. Pronto para carregar dados do novo usuário.');
     }
     // Salvar usuário atual na sessão e atualizar exibição
     if (currentUser) {
@@ -185,7 +210,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Garantir que os dados estão limpos antes de carregar (isolamento por usuário)
         const currentUser = localStorage.getItem('qualishel_current_user');
-        console.log(`👤 Carregando dados para usuário: ${currentUser}`);
+        if (!currentUser) {
+            console.error('❌ ERRO: Nenhum usuário autenticado! Não é possível carregar dados.');
+            return;
+        }
+        
+        const expectedUserId = currentUser.toLowerCase().replace(/\s+/g, '_');
+        console.log(`👤 Carregando dados para usuário: ${currentUser} (userId: ${expectedUserId})`);
         
         // Limpar dados da memória antes de carregar (garantir isolamento)
         panels = [];
@@ -194,16 +225,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         panelIdCounter = 1;
         demandIdCounter = 1;
         availablePeople = [];
+        isUpdatingFromRealtime = false;
         
-        // Limpar dados antigos do localStorage (chaves sem userId) para evitar confusão
+        // Limpar TODAS as chaves antigas do localStorage (chaves sem userId) para evitar confusão
+        console.log('🧹 Limpando chaves antigas do localStorage...');
         const oldKeys = [
             'qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel',
             'qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'
         ];
         oldKeys.forEach(key => {
             if (localStorage.getItem(key)) {
-                console.log(`🧹 Removendo chave antiga do localStorage: ${key}`);
+                console.log(`🗑️ Removendo chave antiga do localStorage: ${key}`);
                 localStorage.removeItem(key);
+            }
+        });
+        
+        // Limpar interface visual antes de carregar
+        const columns = ['pendente', 'andamento', 'revisao', 'concluido'];
+        columns.forEach(status => {
+            const column = document.getElementById(`column-${status}`);
+            if (column) {
+                column.innerHTML = '';
             }
         });
         
@@ -2197,8 +2239,18 @@ async function setupRealtimeSync() {
                 // Marcar flag ANTES de atualizar
                 isUpdatingFromRealtime = true;
                 
-                // Atualizar dados
-                demands = data.demands || [];
+                // IMPORTANTE: Filtrar apenas demandas que pertencem ao usuário atual
+                const newDemands = (data.demands || []).filter(d => {
+                    // Se a demanda tem userId, verificar se corresponde
+                    if (d.userId && d.userId !== expectedUserId) {
+                        console.warn(`⚠️ Ignorando demanda ${d.id} - userId não corresponde (${d.userId} !== ${expectedUserId})`);
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Atualizar dados (substituir completamente, não mesclar)
+                demands = newDemands;
                 demandIdCounter = data.counter || 1;
                 
                 // Preservar chats e histórico ao atualizar
@@ -2307,7 +2359,18 @@ async function setupRealtimeSync() {
                 
                 isUpdatingFromRealtime = true;
                 
-                panels = data.panels || [];
+                // IMPORTANTE: Filtrar apenas painéis que pertencem ao usuário atual
+                const newPanels = (data.panels || []).filter(p => {
+                    // Se o painel tem userId, verificar se corresponde
+                    if (p.userId && p.userId !== expectedUserId) {
+                        console.warn(`⚠️ Ignorando painel ${p.id} - userId não corresponde (${p.userId} !== ${expectedUserId})`);
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Atualizar dados (substituir completamente, não mesclar)
+                panels = newPanels;
                 panelIdCounter = data.counter || 1;
                 
                 // Atualizar painel atual se mudou
