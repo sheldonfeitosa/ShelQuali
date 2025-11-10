@@ -95,8 +95,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const currentUser = localStorage.getItem('qualishel_current_user');
     if (lastUser && lastUser !== currentUser) {
         console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. Limpando e recarregando dados...`);
-        // Limpar listeners anteriores
+        // Limpar listeners anteriores ANTES de limpar dados
         if (typeof window.firebaseService !== 'undefined') {
+            console.log('🛑 Removendo todos os listeners do usuário anterior...');
             window.firebaseService.removeAllListeners();
         }
         // LIMPAR DADOS ANTIGOS DA MEMÓRIA (importante para isolamento)
@@ -106,6 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         panelIdCounter = 1;
         demandIdCounter = 1;
         availablePeople = [];
+        isUpdatingFromRealtime = false; // Resetar flag de sincronização
         // Atualizar exibição do nome do usuário
         updateUserNameDisplay();
     }
@@ -224,13 +226,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Configurar listeners em tempo real para sincronização automática
         // Aguardar um pouco para garantir que Firebase está pronto
         setTimeout(async () => {
+            // Verificar se o usuário mudou durante o carregamento
+            const currentUser = localStorage.getItem('qualishel_current_user');
+            if (!currentUser) {
+                console.warn('⚠️ Nenhum usuário autenticado. Sincronização em tempo real não será configurada.');
+                return;
+            }
+            
             // Tentar configurar sincronização, se falhar, tentar novamente
             let retries = 0;
             const maxRetries = 5;
             
             const trySetupSync = async () => {
+                // Verificar novamente se o usuário ainda é o mesmo
+                const checkUser = localStorage.getItem('qualishel_current_user');
+                if (checkUser !== currentUser) {
+                    console.warn('⚠️ Usuário mudou durante configuração de sincronização. Cancelando...');
+                    return;
+                }
+                
                 // Verificar se Firebase está disponível
                 if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                    console.log(`🔄 Configurando sincronização em tempo real para usuário: ${currentUser}`);
                     await setupRealtimeSync();
                     console.log('✅ Sincronização em tempo real configurada com sucesso');
                 } else if (retries < maxRetries) {
@@ -2115,7 +2132,15 @@ async function setupRealtimeSync() {
         return;
     }
     
-    console.log('🔄 Configurando sincronização em tempo real...');
+    // VALIDAÇÃO: Verificar se há um usuário autenticado
+    const currentUser = localStorage.getItem('qualishel_current_user');
+    if (!currentUser) {
+        console.warn('⚠️ Nenhum usuário autenticado. Sincronização em tempo real não será configurada.');
+        return;
+    }
+    
+    const userId = currentUser.toLowerCase().replace(/\s+/g, '_');
+    console.log(`🔄 Configurando sincronização em tempo real para usuário: ${currentUser} (userId: ${userId})...`);
     
     // Listener para demandas (cards)
     try {

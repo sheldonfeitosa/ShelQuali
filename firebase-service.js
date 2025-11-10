@@ -37,19 +37,31 @@ function initializeFirebase() {
 // Função para salvar demandas (usa Firebase se disponível, senão localStorage)
 async function saveDemandsToStorage(demands, counter) {
     const userId = getCurrentUserId();
+    const currentUser = localStorage.getItem('qualishel_current_user');
+    
+    // VALIDAÇÃO CRÍTICA: Verificar se o userId corresponde ao usuário atual
+    if (currentUser && userId !== currentUser.toLowerCase().replace(/\s+/g, '_')) {
+        console.error(`❌ ERRO CRÍTICO: Tentativa de salvar com userId incorreto! userId: ${userId}, currentUser: ${currentUser}`);
+        return false;
+    }
+    
+    console.log(`💾 Salvando ${demands.length} demandas no Firebase para userId: ${userId} (usuário: ${currentUser})`);
     
     if (firebaseInitialized && db) {
         try {
             const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            await setDoc(doc(db, 'users', userId, 'data', 'demands'), {
+            const docRef = doc(db, 'users', userId, 'data', 'demands');
+            console.log(`📂 Caminho do documento: users/${userId}/data/demands`);
+            await setDoc(docRef, {
                 demands: demands,
                 counter: counter,
-                lastUpdate: new Date().toISOString()
+                lastUpdate: new Date().toISOString(),
+                userId: userId // Adicionar userId ao documento para validação
             });
             console.log(`✅ Demandas salvas no Firebase para usuário: ${userId}`);
             return true;
         } catch (error) {
-            console.error('Erro ao salvar no Firebase:', error);
+            console.error(`❌ Erro ao salvar no Firebase para usuário ${userId}:`, error);
             // Fallback para localStorage
             return saveDemandsToLocalStorage(demands, counter);
         }
@@ -259,20 +271,32 @@ function loadConfigFromLocalStorage() {
 // Salvar painéis
 async function savePanelsToStorage(panels, counter, currentPanelId) {
     const userId = getCurrentUserId();
+    const currentUser = localStorage.getItem('qualishel_current_user');
+    
+    // VALIDAÇÃO CRÍTICA: Verificar se o userId corresponde ao usuário atual
+    if (currentUser && userId !== currentUser.toLowerCase().replace(/\s+/g, '_')) {
+        console.error(`❌ ERRO CRÍTICO: Tentativa de salvar painéis com userId incorreto! userId: ${userId}, currentUser: ${currentUser}`);
+        return false;
+    }
+    
+    console.log(`💾 Salvando ${panels.length} painéis no Firebase para userId: ${userId} (usuário: ${currentUser})`);
     
     if (firebaseInitialized && db) {
         try {
             const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            await setDoc(doc(db, 'users', userId, 'data', 'panels'), {
+            const docRef = doc(db, 'users', userId, 'data', 'panels');
+            console.log(`📂 Caminho do documento: users/${userId}/data/panels`);
+            await setDoc(docRef, {
                 panels: panels,
                 counter: counter,
                 currentPanelId: currentPanelId || null,
-                lastUpdate: new Date().toISOString()
+                lastUpdate: new Date().toISOString(),
+                userId: userId // Adicionar userId ao documento para validação
             });
             console.log(`✅ Painéis salvos no Firebase para usuário: ${userId}`);
             return true;
         } catch (error) {
-            console.error('Erro ao salvar painéis no Firebase:', error);
+            console.error(`❌ Erro ao salvar painéis no Firebase para usuário ${userId}:`, error);
             // Fallback para localStorage
             return savePanelsToLocalStorage(panels, counter, currentPanelId);
         }
@@ -385,10 +409,24 @@ async function setupRealtimeDemandsListener(callback) {
             unsubscribeDemands = onSnapshot(
                 doc(db, 'users', userId, 'data', 'demands'),
                 (docSnap) => {
+                    // VALIDAÇÃO: Verificar se o userId do documento corresponde ao usuário atual
+                    const currentUser = localStorage.getItem('qualishel_current_user');
+                    const expectedUserId = currentUser ? currentUser.toLowerCase().replace(/\s+/g, '_') : userId;
+                    
+                    if (userId !== expectedUserId) {
+                        console.warn(`⚠️ Listener recebeu dados de userId diferente! Esperado: ${expectedUserId}, Recebido: ${userId}. Ignorando...`);
+                        return;
+                    }
+                    
                     // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log('🔄 Demandas atualizadas em tempo real', {
+                        // Validação adicional: verificar se o documento tem userId e corresponde
+                        if (data.userId && data.userId !== userId) {
+                            console.warn(`⚠️ Documento tem userId diferente! Esperado: ${userId}, Documento: ${data.userId}. Ignorando...`);
+                            return;
+                        }
+                        console.log(`🔄 Demandas atualizadas em tempo real para userId: ${userId}`, {
                             timestamp: data.lastUpdate || 'sem timestamp',
                             count: (data.demands || []).length
                         });
@@ -400,7 +438,7 @@ async function setupRealtimeDemandsListener(callback) {
                         }
                     } else {
                         // Documento não existe ainda - notificar com dados vazios
-                        console.log('ℹ️ Documento de demandas ainda não existe no Firestore');
+                        console.log(`ℹ️ Documento de demandas ainda não existe no Firestore para userId: ${userId}`);
                         if (callback) {
                             callback({
                                 demands: [],
@@ -443,10 +481,24 @@ async function setupRealtimePanelsListener(callback) {
             unsubscribePanels = onSnapshot(
                 doc(db, 'users', userId, 'data', 'panels'),
                 (docSnap) => {
+                    // VALIDAÇÃO: Verificar se o userId do documento corresponde ao usuário atual
+                    const currentUser = localStorage.getItem('qualishel_current_user');
+                    const expectedUserId = currentUser ? currentUser.toLowerCase().replace(/\s+/g, '_') : userId;
+                    
+                    if (userId !== expectedUserId) {
+                        console.warn(`⚠️ Listener recebeu dados de userId diferente! Esperado: ${expectedUserId}, Recebido: ${userId}. Ignorando...`);
+                        return;
+                    }
+                    
                     // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        console.log('🔄 Painéis atualizados em tempo real', {
+                        // Validação adicional: verificar se o documento tem userId e corresponde
+                        if (data.userId && data.userId !== userId) {
+                            console.warn(`⚠️ Documento tem userId diferente! Esperado: ${userId}, Documento: ${data.userId}. Ignorando...`);
+                            return;
+                        }
+                        console.log(`🔄 Painéis atualizados em tempo real para userId: ${userId}`, {
                             timestamp: data.lastUpdate || 'sem timestamp',
                             count: (data.panels || []).length,
                             currentPanelId: data.currentPanelId
@@ -460,7 +512,7 @@ async function setupRealtimePanelsListener(callback) {
                         }
                     } else {
                         // Documento não existe ainda - notificar com dados vazios
-                        console.log('ℹ️ Documento de painéis ainda não existe no Firestore');
+                        console.log(`ℹ️ Documento de painéis ainda não existe no Firestore para userId: ${userId}`);
                         if (callback) {
                             callback({
                                 panels: [],
