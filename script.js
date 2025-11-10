@@ -2145,6 +2145,21 @@ async function setupRealtimeSync() {
     // Listener para demandas (cards)
     try {
         await window.firebaseService.setupRealtimeDemandsListener((data) => {
+            // VALIDAÇÃO CRÍTICA: Verificar se o usuário ainda é o mesmo
+            const currentUser = localStorage.getItem('qualishel_current_user');
+            if (!currentUser) {
+                console.warn('⚠️ Nenhum usuário autenticado. Ignorando atualização de demandas.');
+                return;
+            }
+            
+            const expectedUserId = currentUser.toLowerCase().replace(/\s+/g, '_');
+            const actualUserId = window.firebaseService.getCurrentUserId();
+            
+            if (actualUserId !== expectedUserId) {
+                console.warn(`⚠️ Usuário mudou durante atualização! Esperado: ${expectedUserId}, Atual: ${actualUserId}. Ignorando...`);
+                return;
+            }
+            
             // Evitar atualizar se estivermos salvando localmente (prevenir loop)
             if (isUpdatingFromRealtime) {
                 console.log('ℹ️ Ignorando atualização de demandas - sincronização em andamento');
@@ -2155,7 +2170,7 @@ async function setupRealtimeSync() {
             const hasChanged = !arraysEqual(demands, data.demands) || demandIdCounter !== data.counter;
             
             if (hasChanged) {
-                console.log('🔄 Atualizando demandas em tempo real...', {
+                console.log(`🔄 Atualizando demandas em tempo real para usuário: ${currentUser} (${actualUserId})...`, {
                     antes: demands.length,
                     depois: data.demands.length,
                     counterAntes: demandIdCounter,
@@ -2210,9 +2225,16 @@ async function setupRealtimeSync() {
                     }
                 }
                 
-                // Salvar no localStorage também (mas não salvar no Firebase para evitar loop)
-                localStorage.setItem('qualishel-demands', JSON.stringify(demands));
-                localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
+                // NÃO salvar no localStorage aqui - isso é feito pelo firebase-service com userId correto
+                // Remover qualquer chave antiga se existir (para evitar sincronização cruzada)
+                if (localStorage.getItem('qualishel-demands')) {
+                    console.log('🧹 Removendo chave antiga do localStorage: qualishel-demands');
+                    localStorage.removeItem('qualishel-demands');
+                }
+                if (localStorage.getItem('qualishel-demand-counter')) {
+                    console.log('🧹 Removendo chave antiga do localStorage: qualishel-demand-counter');
+                    localStorage.removeItem('qualishel-demand-counter');
+                }
                 
                 // Resetar flag DEPOIS de um pequeno delay para garantir que tudo foi processado
                 setTimeout(() => {
@@ -2231,6 +2253,21 @@ async function setupRealtimeSync() {
     // Listener para painéis
     try {
         await window.firebaseService.setupRealtimePanelsListener((data) => {
+            // VALIDAÇÃO CRÍTICA: Verificar se o usuário ainda é o mesmo
+            const currentUser = localStorage.getItem('qualishel_current_user');
+            if (!currentUser) {
+                console.warn('⚠️ Nenhum usuário autenticado. Ignorando atualização de painéis.');
+                return;
+            }
+            
+            const expectedUserId = currentUser.toLowerCase().replace(/\s+/g, '_');
+            const actualUserId = window.firebaseService.getCurrentUserId();
+            
+            if (actualUserId !== expectedUserId) {
+                console.warn(`⚠️ Usuário mudou durante atualização! Esperado: ${expectedUserId}, Atual: ${actualUserId}. Ignorando...`);
+                return;
+            }
+            
             // Evitar atualizar se estivermos salvando localmente (prevenir loop)
             if (isUpdatingFromRealtime) {
                 console.log('ℹ️ Ignorando atualização de painéis - sincronização em andamento');
@@ -2243,7 +2280,7 @@ async function setupRealtimeSync() {
                               currentPanelId !== data.currentPanelId;
             
             if (hasChanged) {
-                console.log('🔄 Atualizando painéis em tempo real...', {
+                console.log(`🔄 Atualizando painéis em tempo real para usuário: ${currentUser} (${actualUserId})...`, {
                     antes: panels.length,
                     depois: data.panels.length,
                     counterAntes: panelIdCounter,
@@ -2267,10 +2304,20 @@ async function setupRealtimeSync() {
                 renderKanban();
                 updateCardCounts();
                 
-                // Salvar no localStorage também
-                localStorage.setItem('qualishel-panels', JSON.stringify(panels));
-                localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
-                localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+                // NÃO salvar no localStorage aqui - isso é feito pelo firebase-service com userId correto
+                // Remover qualquer chave antiga se existir (para evitar sincronização cruzada)
+                if (localStorage.getItem('qualishel-panels')) {
+                    console.log('🧹 Removendo chave antiga do localStorage: qualishel-panels');
+                    localStorage.removeItem('qualishel-panels');
+                }
+                if (localStorage.getItem('qualishel-panel-counter')) {
+                    console.log('🧹 Removendo chave antiga do localStorage: qualishel-panel-counter');
+                    localStorage.removeItem('qualishel-panel-counter');
+                }
+                if (localStorage.getItem('qualishel-current-panel')) {
+                    console.log('🧹 Removendo chave antiga do localStorage: qualishel-current-panel');
+                    localStorage.removeItem('qualishel-current-panel');
+                }
                 
                 // Resetar flag DEPOIS de um pequeno delay (igual ao de demandas)
                 setTimeout(() => {
