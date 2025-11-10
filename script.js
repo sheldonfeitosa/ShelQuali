@@ -271,29 +271,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 1000);
         
         // Reconectar listeners quando a página ganha foco novamente
+        let reconnectTimeout = null;
         document.addEventListener('visibilitychange', async () => {
             if (!document.hidden && typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                // Limpar timeout anterior se existir
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                }
                 console.log('🔄 Página visível novamente - verificando sincronização...');
                 // Aguardar um pouco antes de reconectar para evitar reconexões desnecessárias
-                setTimeout(async () => {
-                    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                reconnectTimeout = setTimeout(async () => {
+                    const currentUser = localStorage.getItem('qualishel_current_user');
+                    if (currentUser && typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                        // Remover listeners antigos antes de criar novos
+                        window.firebaseService.removeAllListeners();
                         await setupRealtimeSync();
                         console.log('✅ Sincronização reconectada após página ganhar foco');
                     }
-                }, 500);
+                }, 1000); // Aumentar delay para evitar reconexões muito frequentes
             }
         });
         
         // Reconectar quando a janela ganha foco (útil para tablets/desktop)
+        let focusReconnectTimeout = null;
         window.addEventListener('focus', async () => {
             if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                // Limpar timeout anterior se existir
+                if (focusReconnectTimeout) {
+                    clearTimeout(focusReconnectTimeout);
+                }
                 console.log('🔄 Janela ganhou foco - verificando sincronização...');
-                setTimeout(async () => {
-                    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                focusReconnectTimeout = setTimeout(async () => {
+                    const currentUser = localStorage.getItem('qualishel_current_user');
+                    if (currentUser && typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+                        // Remover listeners antigos antes de criar novos
+                        window.firebaseService.removeAllListeners();
                         await setupRealtimeSync();
                         console.log('✅ Sincronização reconectada após janela ganhar foco');
                     }
-                }, 500);
+                }, 1000); // Aumentar delay para evitar reconexões muito frequentes
             }
         });
         

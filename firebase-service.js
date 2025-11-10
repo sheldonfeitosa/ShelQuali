@@ -595,18 +595,23 @@ async function setupRealtimePeopleListener(callback) {
 
 // Remover todos os listeners
 function removeAllListeners() {
+    console.log('🛑 Removendo todos os listeners...');
     if (unsubscribeDemands) {
         unsubscribeDemands();
         unsubscribeDemands = null;
+        console.log('✅ Listener de demandas removido');
     }
     if (unsubscribePanels) {
         unsubscribePanels();
         unsubscribePanels = null;
+        console.log('✅ Listener de painéis removido');
     }
     if (unsubscribePeople) {
         unsubscribePeople();
         unsubscribePeople = null;
+        console.log('✅ Listener de pessoas removido');
     }
+    console.log('✅ Todos os listeners foram removidos');
 }
 
 // Inicializar quando a página carregar
