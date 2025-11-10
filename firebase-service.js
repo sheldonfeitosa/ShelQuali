@@ -4,6 +4,17 @@
 let firebaseInitialized = false;
 let db = null;
 
+// Função para obter o ID do usuário atual (isolamento por usuário)
+function getCurrentUserId() {
+    const currentUser = localStorage.getItem('qualishel_current_user');
+    if (!currentUser) {
+        console.warn('⚠️ Nenhum usuário autenticado. Usando "guest" como ID.');
+        return 'guest';
+    }
+    // Usar o username como ID do usuário (pode ser melhorado com hash)
+    return currentUser.toLowerCase().replace(/\s+/g, '_');
+}
+
 // Verificar se Firebase está disponível
 function checkFirebaseAvailable() {
     return typeof window.db !== 'undefined' && window.db !== null;
@@ -23,15 +34,17 @@ function initializeFirebase() {
 
 // Função para salvar demandas (usa Firebase se disponível, senão localStorage)
 async function saveDemandsToStorage(demands, counter) {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            await setDoc(doc(db, 'system', 'demands'), {
+            await setDoc(doc(db, 'users', userId, 'data', 'demands'), {
                 demands: demands,
                 counter: counter,
                 lastUpdate: new Date().toISOString()
             });
-            console.log('✅ Demandas salvas no Firebase');
+            console.log(`✅ Demandas salvas no Firebase para usuário: ${userId}`);
             return true;
         } catch (error) {
             console.error('Erro ao salvar no Firebase:', error);
@@ -45,19 +58,22 @@ async function saveDemandsToStorage(demands, counter) {
 
 // Função para carregar demandas (usa Firebase se disponível, senão localStorage)
 async function loadDemandsFromStorage() {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const docSnap = await getDoc(doc(db, 'system', 'demands'));
+            const docSnap = await getDoc(doc(db, 'users', userId, 'data', 'demands'));
             
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log('✅ Demandas carregadas do Firebase');
+                console.log(`✅ Demandas carregadas do Firebase para usuário: ${userId}`);
                 return {
                     demands: data.demands || [],
                     counter: data.counter || 1
                 };
             }
+            console.log(`ℹ️ Nenhuma demanda encontrada para usuário: ${userId}`);
             return { demands: [], counter: 1 };
         } catch (error) {
             console.error('Erro ao carregar do Firebase:', error);
@@ -72,8 +88,9 @@ async function loadDemandsFromStorage() {
 // Funções de fallback para localStorage
 function saveDemandsToLocalStorage(demands, counter) {
     try {
-        localStorage.setItem('qualishel-demands', JSON.stringify(demands));
-        localStorage.setItem('qualishel-demand-counter', counter.toString());
+        const userId = getCurrentUserId();
+        localStorage.setItem(`qualishel-demands-${userId}`, JSON.stringify(demands));
+        localStorage.setItem(`qualishel-demand-counter-${userId}`, counter.toString());
         return true;
     } catch (error) {
         console.error('Erro ao salvar no localStorage:', error);
@@ -83,8 +100,9 @@ function saveDemandsToLocalStorage(demands, counter) {
 
 function loadDemandsFromLocalStorage() {
     try {
-        const saved = localStorage.getItem('qualishel-demands');
-        const counter = localStorage.getItem('qualishel-demand-counter');
+        const userId = getCurrentUserId();
+        const saved = localStorage.getItem(`qualishel-demands-${userId}`);
+        const counter = localStorage.getItem(`qualishel-demand-counter-${userId}`);
         return {
             demands: saved ? JSON.parse(saved) : [],
             counter: counter ? parseInt(counter) : 1
@@ -97,31 +115,35 @@ function loadDemandsFromLocalStorage() {
 
 // Salvar pessoas disponíveis
 async function savePeopleToStorage(people) {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            await setDoc(doc(db, 'system', 'people'), {
+            await setDoc(doc(db, 'users', userId, 'data', 'people'), {
                 people: people,
                 lastUpdate: new Date().toISOString()
             });
             return true;
         } catch (error) {
             console.error('Erro ao salvar pessoas no Firebase:', error);
-            localStorage.setItem('qualishel-people', JSON.stringify(people));
+            localStorage.setItem(`qualishel-people-${userId}`, JSON.stringify(people));
             return false;
         }
     } else {
-        localStorage.setItem('qualishel-people', JSON.stringify(people));
+        localStorage.setItem(`qualishel-people-${userId}`, JSON.stringify(people));
         return true;
     }
 }
 
 // Carregar pessoas disponíveis
 async function loadPeopleFromStorage() {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const docSnap = await getDoc(doc(db, 'system', 'people'));
+            const docSnap = await getDoc(doc(db, 'users', userId, 'data', 'people'));
             
             if (docSnap.exists()) {
                 return docSnap.data().people || [];
@@ -129,11 +151,11 @@ async function loadPeopleFromStorage() {
             return [];
         } catch (error) {
             console.error('Erro ao carregar pessoas do Firebase:', error);
-            const saved = localStorage.getItem('qualishel-people');
+            const saved = localStorage.getItem(`qualishel-people-${userId}`);
             return saved ? JSON.parse(saved) : [];
         }
     } else {
-        const saved = localStorage.getItem('qualishel-people');
+        const saved = localStorage.getItem(`qualishel-people-${userId}`);
         return saved ? JSON.parse(saved) : [];
     }
 }
@@ -205,16 +227,18 @@ function loadConfigFromLocalStorage() {
 
 // Salvar painéis
 async function savePanelsToStorage(panels, counter, currentPanelId) {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            await setDoc(doc(db, 'system', 'panels'), {
+            await setDoc(doc(db, 'users', userId, 'data', 'panels'), {
                 panels: panels,
                 counter: counter,
                 currentPanelId: currentPanelId || null,
                 lastUpdate: new Date().toISOString()
             });
-            console.log('✅ Painéis salvos no Firebase');
+            console.log(`✅ Painéis salvos no Firebase para usuário: ${userId}`);
             return true;
         } catch (error) {
             console.error('Erro ao salvar painéis no Firebase:', error);
@@ -228,20 +252,23 @@ async function savePanelsToStorage(panels, counter, currentPanelId) {
 
 // Carregar painéis
 async function loadPanelsFromStorage() {
+    const userId = getCurrentUserId();
+    
     if (firebaseInitialized && db) {
         try {
             const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-            const docSnap = await getDoc(doc(db, 'system', 'panels'));
+            const docSnap = await getDoc(doc(db, 'users', userId, 'data', 'panels'));
             
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                console.log('✅ Painéis carregados do Firebase');
+                console.log(`✅ Painéis carregados do Firebase para usuário: ${userId}`);
                 return {
                     panels: data.panels || [],
                     counter: data.counter || 1,
                     currentPanelId: data.currentPanelId || null
                 };
             }
+            console.log(`ℹ️ Nenhum painel encontrado para usuário: ${userId}`);
             return { panels: [], counter: 1, currentPanelId: null };
         } catch (error) {
             console.error('Erro ao carregar painéis do Firebase:', error);
@@ -256,9 +283,10 @@ async function loadPanelsFromStorage() {
 // Funções de fallback para localStorage (painéis)
 function savePanelsToLocalStorage(panels, counter, currentPanelId) {
     try {
-        localStorage.setItem('qualishel-panels', JSON.stringify(panels));
-        localStorage.setItem('qualishel-panel-counter', counter.toString());
-        localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
+        const userId = getCurrentUserId();
+        localStorage.setItem(`qualishel-panels-${userId}`, JSON.stringify(panels));
+        localStorage.setItem(`qualishel-panel-counter-${userId}`, counter.toString());
+        localStorage.setItem(`qualishel-current-panel-${userId}`, currentPanelId ? currentPanelId.toString() : '');
         return true;
     } catch (error) {
         console.error('Erro ao salvar painéis no localStorage:', error);
@@ -268,9 +296,10 @@ function savePanelsToLocalStorage(panels, counter, currentPanelId) {
 
 function loadPanelsFromLocalStorage() {
     try {
-        const saved = localStorage.getItem('qualishel-panels');
-        const counter = localStorage.getItem('qualishel-panel-counter');
-        const currentPanel = localStorage.getItem('qualishel-current-panel');
+        const userId = getCurrentUserId();
+        const saved = localStorage.getItem(`qualishel-panels-${userId}`);
+        const counter = localStorage.getItem(`qualishel-panel-counter-${userId}`);
+        const currentPanel = localStorage.getItem(`qualishel-current-panel-${userId}`);
         return {
             panels: saved ? JSON.parse(saved) : [],
             counter: counter ? parseInt(counter) : 1,
@@ -296,10 +325,11 @@ async function setupRealtimeDemandsListener(callback) {
                 unsubscribeDemands();
             }
             
+            const userId = getCurrentUserId();
             const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
             
             unsubscribeDemands = onSnapshot(
-                doc(db, 'system', 'demands'),
+                doc(db, 'users', userId, 'data', 'demands'),
                 (docSnap) => {
                     // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
@@ -353,10 +383,11 @@ async function setupRealtimePanelsListener(callback) {
                 unsubscribePanels();
             }
             
+            const userId = getCurrentUserId();
             const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
             
             unsubscribePanels = onSnapshot(
-                doc(db, 'system', 'panels'),
+                doc(db, 'users', userId, 'data', 'panels'),
                 (docSnap) => {
                     // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
@@ -413,10 +444,11 @@ async function setupRealtimePeopleListener(callback) {
                 unsubscribePeople();
             }
             
+            const userId = getCurrentUserId();
             const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
             
             unsubscribePeople = onSnapshot(
-                doc(db, 'system', 'people'),
+                doc(db, 'users', userId, 'data', 'people'),
                 (docSnap) => {
                     // Sempre acionar callback, mesmo se documento não existir
                     if (docSnap.exists()) {
@@ -495,7 +527,8 @@ if (typeof window !== 'undefined') {
         setupRealtimePeopleListener,
         removeAllListeners,
         checkFirebaseAvailable,
-        isInitialized: () => firebaseInitialized
+        isInitialized: () => firebaseInitialized,
+        getCurrentUserId
     };
 }
 

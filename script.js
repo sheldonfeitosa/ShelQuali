@@ -90,6 +90,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
     
+    // Se mudou de usuário, recarregar dados (isolamento por usuário)
+    const lastUser = sessionStorage.getItem('qualishel_last_user');
+    const currentUser = localStorage.getItem('qualishel_current_user');
+    if (lastUser && lastUser !== currentUser) {
+        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. Recarregando dados...`);
+        // Limpar listeners anteriores
+        if (typeof window.firebaseService !== 'undefined') {
+            window.firebaseService.removeAllListeners();
+        }
+    }
+    // Salvar usuário atual na sessão
+    if (currentUser) {
+        sessionStorage.setItem('qualishel_last_user', currentUser);
+    }
+    
     // Se for convite mas não estiver autenticado, permitir acesso temporário
     if (isInvite && localStorage.getItem('qualishel_authenticated') !== 'true') {
         // Autenticar automaticamente para convidados
@@ -2241,69 +2256,34 @@ function savePanels() {
     // Se estiver atualizando de sincronização em tempo real, não salvar no Firebase (evitar loop)
     if (isUpdatingFromRealtime) {
         console.log('ℹ️ Ignorando savePanels - atualização em tempo real em andamento');
-        // Ainda salvar no localStorage para consistência local
-        localStorage.setItem('qualishel-panels', JSON.stringify(panels));
-        localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
-        localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
         return;
     }
     
-    // Sempre salvar no localStorage primeiro (rápido)
-    localStorage.setItem('qualishel-panels', JSON.stringify(panels));
-    localStorage.setItem('qualishel-panel-counter', panelIdCounter.toString());
-    localStorage.setItem('qualishel-current-panel', currentPanelId ? currentPanelId.toString() : '');
-    
-    // Tentar salvar no Firebase em background (se disponível)
+    // Salvar através do firebase-service (que já gerencia isolamento por usuário)
     if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
         window.firebaseService.savePanelsToStorage(panels, panelIdCounter, currentPanelId).catch(err => {
             console.warn('Erro ao sincronizar painéis com Firebase:', err);
         });
+    } else {
+        // Fallback: usar firebase-service mesmo sem Firebase (ele gerencia localStorage com userId)
+        if (typeof window.firebaseService !== 'undefined') {
+            window.firebaseService.savePanelsToStorage(panels, panelIdCounter, currentPanelId);
+        }
     }
 }
 
 async function loadPanels() {
     let savedData = { panels: [], counter: 1, currentPanelId: null };
     
-    // Tentar carregar do Firebase primeiro, se disponível
-    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+    // Sempre usar firebase-service (que gerencia isolamento por usuário)
+    if (typeof window.firebaseService !== 'undefined') {
         try {
             savedData = await window.firebaseService.loadPanelsFromStorage();
-            console.log('✅ Painéis carregados do Firebase');
+            console.log('✅ Painéis carregados');
         } catch (error) {
-            console.warn('Erro ao carregar painéis do Firebase, usando localStorage:', error);
-            // Fallback para localStorage
-            const saved = localStorage.getItem('qualishel-panels');
-            const counter = localStorage.getItem('qualishel-panel-counter');
-            const currentPanel = localStorage.getItem('qualishel-current-panel');
-            
-            if (saved) {
-                savedData.panels = JSON.parse(saved);
-            }
-            
-            if (counter) {
-                savedData.counter = parseInt(counter);
-            }
-            
-            if (currentPanel) {
-                savedData.currentPanelId = parseInt(currentPanel);
-            }
-        }
-    } else {
-        // Usar localStorage
-        const saved = localStorage.getItem('qualishel-panels');
-        const counter = localStorage.getItem('qualishel-panel-counter');
-        const currentPanel = localStorage.getItem('qualishel-current-panel');
-        
-        if (saved) {
-            savedData.panels = JSON.parse(saved);
-        }
-        
-        if (counter) {
-            savedData.counter = parseInt(counter);
-        }
-        
-        if (currentPanel) {
-            savedData.currentPanelId = parseInt(currentPanel);
+            console.warn('Erro ao carregar painéis:', error);
+            // Retornar dados vazios se houver erro
+            savedData = { panels: [], counter: 1, currentPanelId: null };
         }
     }
     
@@ -2367,15 +2347,16 @@ function saveDemands() {
         }
     });
     
-    // Sempre salvar no localStorage primeiro (rápido)
-    localStorage.setItem('qualishel-demands', JSON.stringify(demands));
-    localStorage.setItem('qualishel-demand-counter', demandIdCounter.toString());
-    
-    // Tentar salvar no Firebase em background (se disponível)
+    // Salvar através do firebase-service (que já gerencia isolamento por usuário)
     if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
         window.firebaseService.saveDemandsToStorage(demands, demandIdCounter).catch(err => {
             console.warn('Erro ao sincronizar com Firebase:', err);
         });
+    } else {
+        // Fallback: usar firebase-service mesmo sem Firebase (ele gerencia localStorage com userId)
+        if (typeof window.firebaseService !== 'undefined') {
+            window.firebaseService.saveDemandsToStorage(demands, demandIdCounter);
+        }
     }
 }
 
@@ -2383,47 +2364,17 @@ async function loadDemands() {
     let savedData = { demands: [], counter: 1 };
     let savedPeople = [];
     
-    // Tentar carregar do Firebase primeiro, se disponível
-    if (typeof window.firebaseService !== 'undefined' && window.firebaseService.isInitialized()) {
+    // Sempre usar firebase-service (que gerencia isolamento por usuário)
+    if (typeof window.firebaseService !== 'undefined') {
         try {
             savedData = await window.firebaseService.loadDemandsFromStorage();
             savedPeople = await window.firebaseService.loadPeopleFromStorage();
-            console.log('✅ Dados carregados do Firebase');
+            console.log('✅ Dados carregados');
         } catch (error) {
-            console.warn('Erro ao carregar do Firebase, usando localStorage:', error);
-            // Fallback para localStorage
-            const saved = localStorage.getItem('qualishel-demands');
-            const counter = localStorage.getItem('qualishel-demand-counter');
-            const savedPeopleStr = localStorage.getItem('qualishel-people');
-            
-            if (saved) {
-                savedData.demands = JSON.parse(saved);
-            }
-            
-            if (counter) {
-                savedData.counter = parseInt(counter);
-            }
-            
-            if (savedPeopleStr) {
-                savedPeople = JSON.parse(savedPeopleStr);
-            }
-        }
-    } else {
-        // Usar localStorage
-        const saved = localStorage.getItem('qualishel-demands');
-        const counter = localStorage.getItem('qualishel-demand-counter');
-        const savedPeopleStr = localStorage.getItem('qualishel-people');
-        
-        if (saved) {
-            savedData.demands = JSON.parse(saved);
-        }
-        
-        if (counter) {
-            savedData.counter = parseInt(counter);
-        }
-        
-        if (savedPeopleStr) {
-            savedPeople = JSON.parse(savedPeopleStr);
+            console.warn('Erro ao carregar dados:', error);
+            // Retornar dados vazios se houver erro
+            savedData = { demands: [], counter: 1 };
+            savedPeople = [];
         }
     }
     
