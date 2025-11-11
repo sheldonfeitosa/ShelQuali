@@ -1594,7 +1594,11 @@ function renderPDSViewContent(pdsa, container) {
             </div>
             
             <div class="pdsa-diagram-container">
-                <div class="pdsa-diagram">
+                <div class="pdsa-diagram-wrapper">
+                    <svg class="pdsa-cycle-circle" viewBox="0 0 200 200">
+                        <circle cx="100" cy="100" r="95" fill="none" stroke="rgba(37, 99, 235, 0.5)" stroke-width="4"/>
+                    </svg>
+                    <div class="pdsa-diagram">
     `;
     
     // Criar os 4 quadrantes do diagrama PDSA
@@ -1630,6 +1634,7 @@ function renderPDSViewContent(pdsa, container) {
     });
     
     html += `
+                    </div>
                 </div>
             </div>
             

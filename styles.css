@@ -6187,7 +6187,7 @@ body {
 
 .pdsa-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 1rem;
     position: relative;
     z-index: 1;
@@ -6383,7 +6383,7 @@ body {
 
 .pdsa-card-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 0.875rem;
 }
 
@@ -6481,9 +6481,29 @@ body {
     margin: 2rem 0;
 }
 
-.pdsa-diagram {
+.pdsa-diagram-wrapper {
     width: 100%;
     max-width: 800px;
+    aspect-ratio: 1;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.pdsa-cycle-circle {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.pdsa-diagram {
+    width: 85%;
+    height: 85%;
     aspect-ratio: 1;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -6493,6 +6513,8 @@ body {
     border-radius: var(--radius-xl);
     overflow: hidden;
     box-shadow: var(--shadow-xl);
+    z-index: 2;
+    background: var(--bg-color);
 }
 
 .pdsa-quadrant {
