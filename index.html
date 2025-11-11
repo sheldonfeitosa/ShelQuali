@@ -1344,6 +1344,31 @@
         </div>
     </div>
 
+    <!-- Modal para Transferir Demanda -->
+    <div id="transfer-demand-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Transferir Demanda</h3>
+                <button class="modal-close" id="close-transfer-demand-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                    Selecione o painel de destino para transferir esta demanda:
+                </p>
+                <div class="form-group">
+                    <label for="transfer-panel-select">Painel de Destino:</label>
+                    <select id="transfer-panel-select" class="form-control">
+                        <option value="">Selecione um painel...</option>
+                    </select>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem; display: flex; gap: 0.75rem; justify-content: flex-end;">
+                    <button class="btn-secondary" id="cancel-transfer-demand-btn">Cancelar</button>
+                    <button class="btn-primary" id="confirm-transfer-demand-btn">Transferir</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal para Criar/Editar Painel -->
     <div id="panel-form-modal" class="modal">
         <div class="modal-content">

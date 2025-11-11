@@ -36,6 +36,8 @@ let currentUserName = 'Você'; // Nome do usuário atual (pode ser configurado)
 let panelSelector, newPanelBtn, managePanelsBtn, panelsModal, closePanelsModalBtn;
 let panelFormModal, closePanelFormModalBtn, panelForm, cancelPanelFormBtn, createPanelBtn;
 let currentPanelForEdit = null; // Armazena o ID do painel sendo editado
+let transferDemandModal, closeTransferDemandModalBtn, transferPanelSelect, cancelTransferDemandBtn, confirmTransferDemandBtn;
+let currentDemandForTransfer = null; // Armazena o ID da demanda sendo transferida
 const demandPrioritySelect = document.getElementById('demand-priority');
 const gutTriggerBtn = document.getElementById('gut-trigger-btn');
 const gutPanel = document.getElementById('gut-panel');
@@ -539,6 +541,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         closePanelsModalBtn = document.getElementById('close-panels-modal');
         panelFormModal = document.getElementById('panel-form-modal');
         closePanelFormModalBtn = document.getElementById('close-panel-form-modal');
+        transferDemandModal = document.getElementById('transfer-demand-modal');
+        closeTransferDemandModalBtn = document.getElementById('close-transfer-demand-modal');
+        transferPanelSelect = document.getElementById('transfer-panel-select');
+        cancelTransferDemandBtn = document.getElementById('cancel-transfer-demand-btn');
+        confirmTransferDemandBtn = document.getElementById('confirm-transfer-demand-btn');
         panelForm = document.getElementById('panel-form');
         cancelPanelFormBtn = document.getElementById('cancel-panel-form-btn');
         createPanelBtn = document.getElementById('create-panel-btn');
@@ -1284,6 +1291,20 @@ function setupEventListeners() {
             if (e.target === panelsModal) closePanelsModal();
         });
     }
+    if (closeTransferDemandModalBtn) {
+        closeTransferDemandModalBtn.addEventListener('click', () => closeTransferDemandModal());
+    }
+    if (transferDemandModal) {
+        transferDemandModal.addEventListener('click', (e) => {
+            if (e.target === transferDemandModal) closeTransferDemandModal();
+        });
+    }
+    if (cancelTransferDemandBtn) {
+        cancelTransferDemandBtn.addEventListener('click', () => closeTransferDemandModal());
+    }
+    if (confirmTransferDemandBtn) {
+        confirmTransferDemandBtn.addEventListener('click', () => confirmTransferDemand());
+    }
     if (panelFormModal) {
         panelFormModal.addEventListener('click', (e) => {
             if (e.target === panelFormModal) closePanelFormModal();
@@ -1867,6 +1888,9 @@ function createCard(demand) {
                 <button class="card-action-btn" onclick="manageCollaborators(${demand.id})" title="Gerenciar Colaboradores">
                     👥
                 </button>
+                <button class="card-action-btn" onclick="transferDemand(${demand.id})" title="Transferir para outro Painel">
+                    🔄
+                </button>
                 <button class="card-action-btn" onclick="deleteDemand(${demand.id})" title="Arquivar">
                     📦
                 </button>
@@ -2330,6 +2354,117 @@ function deleteDemand(id) {
             renderKanban();
             updateCardCounts();
             updateDashboard(); // Atualizar dashboard se estiver visível
+        }
+    }
+}
+
+// Transferir Demanda para outro Painel
+function transferDemand(id) {
+    const demand = demands.find(d => d.id === id);
+    if (!demand) return;
+    
+    currentDemandForTransfer = id;
+    
+    // Preencher o select com os painéis disponíveis (excluindo o painel atual)
+    if (transferPanelSelect) {
+        transferPanelSelect.innerHTML = '<option value="">Selecione um painel...</option>';
+        
+        const availablePanels = panels.filter(p => !p.archived && p.id !== demand.panelId);
+        
+        if (availablePanels.length === 0) {
+            alert('Não há outros painéis disponíveis para transferir esta demanda.');
+            return;
+        }
+        
+        availablePanels.forEach(panel => {
+            const option = document.createElement('option');
+            option.value = panel.id;
+            option.textContent = panel.name;
+            transferPanelSelect.appendChild(option);
+        });
+    }
+    
+    // Abrir o modal
+    if (transferDemandModal) {
+        transferDemandModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeTransferDemandModal() {
+    if (transferDemandModal) {
+        transferDemandModal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    currentDemandForTransfer = null;
+    if (transferPanelSelect) {
+        transferPanelSelect.value = '';
+    }
+}
+
+function confirmTransferDemand() {
+    if (!currentDemandForTransfer || !transferPanelSelect) return;
+    
+    const targetPanelId = parseInt(transferPanelSelect.value);
+    if (!targetPanelId) {
+        alert('Por favor, selecione um painel de destino.');
+        return;
+    }
+    
+    const demand = demands.find(d => d.id === currentDemandForTransfer);
+    if (!demand) return;
+    
+    const targetPanel = panels.find(p => p.id === targetPanelId);
+    if (!targetPanel) {
+        alert('Painel de destino não encontrado.');
+        return;
+    }
+    
+    // Confirmar transferência
+    if (confirm(`Tem certeza que deseja transferir a demanda "${demand.title}" para o painel "${targetPanel.name}"?`)) {
+        const oldPanelId = demand.panelId;
+        const oldPanel = panels.find(p => p.id === oldPanelId);
+        
+        // Garantir que o histórico existe
+        if (!demand.history) {
+            demand.history = [];
+        }
+        
+        // Atualizar o painel da demanda
+        demand.panelId = targetPanelId;
+        
+        // Adicionar ao histórico
+        demand.history.push({
+            action: 'panel_transferred',
+            timestamp: new Date().toISOString(),
+            user: localStorage.getItem('qualishel_current_user') || 'Sistema',
+            changes: [
+                { field: 'panelId', from: oldPanelId, to: targetPanelId },
+                { field: 'panelName', from: oldPanel ? oldPanel.name : 'Desconhecido', to: targetPanel.name }
+            ]
+        });
+        
+        // Salvar alterações
+        saveDemands();
+        
+        // Fechar o modal
+        closeTransferDemandModal();
+        
+        // Atualizar a interface
+        renderKanban();
+        updateCardCounts();
+        updateDashboard();
+        
+        // Notificar colaboradores sobre a transferência
+        notifyCollaboratorsAboutUpdate(demand, 'panel_transferred', {
+            oldPanelName: oldPanel ? oldPanel.name : 'Desconhecido',
+            newPanelName: targetPanel.name
+        });
+        
+        // Se o painel atual não tiver mais demandas visíveis, mostrar mensagem
+        const currentPanelDemands = demands.filter(d => d.panelId === currentPanelId && !d.archived);
+        if (currentPanelDemands.length === 0) {
+            console.log('ℹ️ Nenhuma demanda no painel atual após transferência');
         }
     }
 }
@@ -5480,6 +5615,10 @@ async function notifyCollaboratorsAboutUpdate(demand, updateType, updateDetails 
             } else {
             updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
             }
+            break;
+        case 'panel_transferred':
+            updateTitle = 'Demanda transferida';
+            updateMessage = `A demanda "${demand.title}" foi transferida do painel "${updateDetails.oldPanelName || 'Desconhecido'}" para o painel "${updateDetails.newPanelName || 'Desconhecido'}".`;
             break;
         default:
             updateTitle = 'Atualização na demanda';
