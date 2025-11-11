@@ -1558,29 +1558,50 @@ function renderPDSViewContent(pdsa, container) {
             label: 'Plan (Planejar)', 
             value: pdsa.plan, 
             icon: '📋', 
-            description: 'Descreva o objetivo, a mudança sendo testada, as previsões e os passos de ação necessários. Planeje a coleta de dados.',
-            color: '#2563eb' // Azul escuro
+            steps: [
+                'Passo 1: Começar',
+                'Passo 2: Montar a equipe',
+                'Passo 3: Examinar abordagem atual',
+                'Passo 4: Identificar soluções potenciais',
+                'Passo 5: Desenvolver uma teoria de melhoria'
+            ],
+            color: '#dc2626', // Vermelho
+            letter: 'P',
+            position: 'top-right'
         },
         { 
             label: 'Do (Fazer)', 
             value: pdsa.do, 
             icon: '⚡', 
-            description: 'Execute o teste. Descreva o que aconteceu. Colete os dados.',
-            color: '#1e40af' // Azul mais escuro
+            steps: [
+                'Passo 6: Testar a teoria de melhoria'
+            ],
+            color: '#6b7280', // Cinza
+            letter: 'D',
+            position: 'bottom-right'
         },
         { 
             label: 'Study (Estudar)', 
             value: pdsa.study, 
             icon: '🔍', 
-            description: 'Analise os dados. Compare os resultados com as previsões. Resuma o que você aprendeu.',
-            color: '#3b82f6' // Azul médio
+            steps: [
+                'Passo 7: Usar dados para estudar o resultado'
+            ],
+            color: '#14b8a6', // Teal/Azul-esverdeado
+            letter: 'S',
+            position: 'bottom-left'
         },
         { 
             label: 'Act (Agir)', 
             value: pdsa.act, 
             icon: '✅', 
-            description: 'Decida o que fazer a seguir. Faça mudanças e inicie outro ciclo.',
-            color: '#6b7280' // Cinza
+            steps: [
+                'Passo 8: Padronizar a melhoria ou desenvolver uma nova teoria',
+                'Passo 9: Estabelecer planos futuros'
+            ],
+            color: '#d97706', // Dourado/Marrom
+            letter: 'A',
+            position: 'top-left'
         }
     ];
     
@@ -1595,37 +1616,53 @@ function renderPDSViewContent(pdsa, container) {
             
             <div class="pdsa-diagram-container">
                 <div class="pdsa-diagram-wrapper">
-                    <svg class="pdsa-cycle-circle" viewBox="0 0 200 200">
-                        <circle cx="100" cy="100" r="95" fill="none" stroke="rgba(37, 99, 235, 0.5)" stroke-width="4"/>
+                    <svg class="pdsa-cycle-svg" viewBox="0 0 400 400">
+                        <!-- Círculo central -->
+                        <circle cx="200" cy="200" r="40" fill="#ffffff" stroke="rgba(0,0,0,0.15)" stroke-width="2"/>
+                        
+                        <!-- Segmento Plan (Top Right) - Vermelho - Forma de seta apontando para Do -->
+                        <path d="M 200 200 L 200 50 A 150 150 0 0 1 350 200 L 340 200 L 320 160 L 300 200 L 200 200 Z" fill="${pdsaFields[0].color}" class="pdsa-segment pdsa-plan-segment"/>
+                        <text x="370" y="140" class="pdsa-letter pdsa-letter-p" text-anchor="middle" dominant-baseline="middle">P</text>
+                        
+                        <!-- Segmento Do (Bottom Right) - Cinza - Forma de seta apontando para Study -->
+                        <path d="M 200 200 L 350 200 A 150 150 0 0 1 200 350 L 200 340 L 160 320 L 200 300 L 200 200 Z" fill="${pdsaFields[1].color}" class="pdsa-segment pdsa-do-segment"/>
+                        <text x="370" y="260" class="pdsa-letter pdsa-letter-d" text-anchor="middle" dominant-baseline="middle">D</text>
+                        
+                        <!-- Segmento Study (Bottom Left) - Teal - Forma de seta apontando para Act -->
+                        <path d="M 200 200 L 200 350 A 150 150 0 0 1 50 200 L 60 200 L 80 160 L 100 200 L 200 200 Z" fill="${pdsaFields[2].color}" class="pdsa-segment pdsa-study-segment"/>
+                        <text x="30" y="260" class="pdsa-letter pdsa-letter-s" text-anchor="middle" dominant-baseline="middle">S</text>
+                        
+                        <!-- Segmento Act (Top Left) - Dourado - Forma de seta apontando para Plan -->
+                        <path d="M 200 200 L 50 200 A 150 150 0 0 1 200 50 L 200 60 L 160 80 L 200 100 L 200 200 Z" fill="${pdsaFields[3].color}" class="pdsa-segment pdsa-act-segment"/>
+                        <text x="30" y="140" class="pdsa-letter pdsa-letter-a" text-anchor="middle" dominant-baseline="middle">A</text>
                     </svg>
-                    <div class="pdsa-diagram">
+                    
+                    <div class="pdsa-segments-content">
     `;
     
-    // Criar os 4 quadrantes do diagrama PDSA
-    // Ordem: Plan (top-right), Do (bottom-right), Study (bottom-left), Act (top-left)
-    const quadrantOrder = ['plan', 'do', 'study', 'act'];
-    const positions = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
-    
-    quadrantOrder.forEach((fieldKey, index) => {
-        const field = pdsaFields.find(f => f.label.toLowerCase().includes(fieldKey));
-        const position = positions[index];
+    // Criar conteúdo para cada segmento
+    pdsaFields.forEach((field, index) => {
+        html += `
+            <div class="pdsa-segment-content pdsa-${field.position}" style="color: white;">
+                <h3 class="pdsa-segment-title">${field.label}</h3>
+                <div class="pdsa-segment-steps">
+        `;
+        
+        field.steps.forEach(step => {
+            html += `<div class="pdsa-step-item">${step}</div>`;
+        });
         
         html += `
-            <div class="pdsa-quadrant pdsa-${position}" style="background: ${field.color}20; border-color: ${field.color};">
-                <div class="pdsa-quadrant-header">
-                    <span class="pdsa-quadrant-icon">${field.icon}</span>
-                    <h3 class="pdsa-quadrant-title">${field.label}</h3>
                 </div>
-                <div class="pdsa-quadrant-description">
-                    ${field.description}
-                </div>
-                <div class="pdsa-quadrant-content">
+                <div class="pdsa-segment-user-content">
                     ${field.value ? `
-                        <div class="pdsa-quadrant-value">${escapeHtml(field.value).replace(/\n/g, '<br>')}</div>
+                        <div class="pdsa-user-value">
+                            <strong>Seu conteúdo:</strong>
+                            <div class="pdsa-value-text">${escapeHtml(field.value).replace(/\n/g, '<br>')}</div>
+                        </div>
                     ` : `
-                        <div class="pdsa-quadrant-empty">
-                            <span class="empty-icon">—</span>
-                            <span class="empty-text">Não preenchido</span>
+                        <div class="pdsa-user-empty">
+                            <span>Nenhum conteúdo adicionado ainda</span>
                         </div>
                     `}
                 </div>
