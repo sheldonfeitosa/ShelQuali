@@ -122,12 +122,23 @@ function loadDemandsFromLocalStorage() {
         const userId = getCurrentUserId();
         console.log(`🔍 Buscando demandas no localStorage com chave: qualishel-demands-${userId}`);
         
-        // Limpar dados antigos (chaves sem userId) se existirem
+        // Limpar APENAS dados antigos (sem userId) se existirem E não houver dados do usuário atual
+        // NUNCA remover dados do usuário atual
         const oldKeys = ['qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'];
         oldKeys.forEach(key => {
-            if (localStorage.getItem(key)) {
-                console.log(`🧹 Removendo chave antiga: ${key}`);
+            // Verificar se existe chave específica do usuário antes de remover chave antiga
+            const userSpecificKey = key.includes('-counter') 
+                ? `qualishel-demand-counter-${userId}`
+                : `${key}-${userId}`;
+            const hasUserSpecificData = localStorage.getItem(userSpecificKey);
+            
+            if (localStorage.getItem(key) && !hasUserSpecificData) {
+                // Só remover se não houver dados específicos do usuário
+                console.log(`🧹 Removendo chave antiga (sem userId): ${key}`);
                 localStorage.removeItem(key);
+            } else if (localStorage.getItem(key) && hasUserSpecificData) {
+                // Se houver dados do usuário, manter a chave antiga (pode ser migrada depois)
+                console.log(`ℹ️ Mantendo chave antiga ${key} (dados do usuário existem)`);
             }
         });
         
@@ -359,12 +370,25 @@ function loadPanelsFromLocalStorage() {
         const userId = getCurrentUserId();
         console.log(`🔍 Buscando painéis no localStorage com chave: qualishel-panels-${userId}`);
         
-        // Limpar dados antigos (chaves sem userId) se existirem
+        // Limpar APENAS dados antigos (sem userId) se existirem E não houver dados do usuário atual
+        // NUNCA remover dados do usuário atual
         const oldKeys = ['qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel'];
         oldKeys.forEach(key => {
-            if (localStorage.getItem(key)) {
-                console.log(`🧹 Removendo chave antiga: ${key}`);
+            // Verificar se existe chave específica do usuário antes de remover chave antiga
+            const userSpecificKey = key.includes('-counter') 
+                ? `qualishel-panel-counter-${userId}`
+                : key.includes('current-panel')
+                ? `qualishel-current-panel-${userId}`
+                : `${key}-${userId}`;
+            const hasUserSpecificData = localStorage.getItem(userSpecificKey);
+            
+            if (localStorage.getItem(key) && !hasUserSpecificData) {
+                // Só remover se não houver dados específicos do usuário
+                console.log(`🧹 Removendo chave antiga (sem userId): ${key}`);
                 localStorage.removeItem(key);
+            } else if (localStorage.getItem(key) && hasUserSpecificData) {
+                // Se houver dados do usuário, manter a chave antiga (pode ser migrada depois)
+                console.log(`ℹ️ Mantendo chave antiga ${key} (dados do usuário existem)`);
             }
         });
         

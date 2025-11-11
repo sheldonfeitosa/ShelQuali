@@ -376,10 +376,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Se mudou de usuário, recarregar dados (isolamento por usuário)
+    // IMPORTANTE: Esta limpeza só acontece quando REALMENTE muda de usuário, não em cada carregamento
     const lastUser = sessionStorage.getItem('qualishel_last_user');
     const currentUser = localStorage.getItem('qualishel_current_user');
-    if (lastUser && lastUser !== currentUser) {
-        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. LIMPANDO TUDO e recarregando dados...`);
+    
+    // Só limpar se: 1) houver um usuário anterior registrado E 2) for diferente do atual
+    // Isso garante que não limpamos dados em recarregamentos normais da página
+    if (lastUser && currentUser && lastUser !== currentUser) {
+        console.log(`🔄 Usuário mudou de ${lastUser} para ${currentUser}. LIMPANDO dados do usuário anterior e recarregando...`);
         
         // 1. Limpar listeners anteriores ANTES de limpar dados
         if (typeof window.firebaseService !== 'undefined') {
@@ -396,14 +400,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         availablePeople = [];
         isUpdatingFromRealtime = false; // Resetar flag de sincronização
         
-        // 3. LIMPAR TODAS AS CHAVES DO LOCALSTORAGE (exceto autenticação e usuário atual)
-        console.log('🧹 Limpando localStorage de dados antigos...');
-        const keysToKeep = ['qualishel_authenticated', 'qualishel_current_user', 'qualishel_users'];
+        // 3. LIMPAR APENAS DADOS DO USUÁRIO ANTERIOR (proteger dados do usuário atual e credenciais)
+        // CRÍTICO: NUNCA remover dados do usuário atual ou credenciais (qualishel_users)
+        console.log('🧹 Limpando localStorage de dados do usuário anterior...');
+        const previousUserId = lastUser.toLowerCase().replace(/\s+/g, '_');
+        const currentUserId = currentUser.toLowerCase().replace(/\s+/g, '_');
+        const keysToKeep = [
+            'qualishel_authenticated', 
+            'qualishel_current_user', 
+            'qualishel_users', // CREDENCIAIS - NUNCA REMOVER
+            // Configurações globais que devem ser preservadas
+            'qualishel-email-config',
+            'qualishel-user-name',
+            'qualishel-production-url',
+            'qualishel-notifications-enabled',
+            'qualishel-auto-add-to-calendar',
+            'qualishel-google-calendar-client-id',
+            'qualishel-google-calendar-token',
+            'qualishel-google-calendar-user-email'
+        ];
+        // Adicionar TODAS as chaves do usuário ATUAL à lista de proteção (NUNCA remover)
         const allKeys = Object.keys(localStorage);
         allKeys.forEach(key => {
-            if (!keysToKeep.includes(key) && key.startsWith('qualishel-')) {
-                console.log(`🗑️ Removendo chave do localStorage: ${key}`);
-                localStorage.removeItem(key);
+            // Proteger TODAS as chaves que contêm userId do usuário ATUAL
+            if (key.includes(`-${currentUserId}`) || key.includes(`-${currentUserId}-`)) {
+                keysToKeep.push(key);
+            }
+        });
+        // Remover APENAS dados do usuário ANTERIOR (não do atual) e chaves antigas (sem userId)
+        allKeys.forEach(key => {
+            if (key.startsWith('qualishel-') && !keysToKeep.includes(key)) {
+                // Verificar se é uma chave do usuário anterior (para remover) ou chave antiga (sem userId)
+                const isPreviousUserKey = key.includes(`-${previousUserId}`) || key.includes(`-${previousUserId}-`);
+                const isOldKey = ['qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel',
+                                 'qualishel-demands', 'qualishel-demand-counter', 'qualishel-people']
+                                 .includes(key);
+                
+                // Só remover se for do usuário anterior OU chave antiga (sem userId)
+                // NUNCA remover se for do usuário atual
+                if (isPreviousUserKey || isOldKey) {
+                    // Verificação de segurança: garantir que não é do usuário atual
+                    if (!key.includes(`-${currentUserId}`) && !key.includes(`-${currentUserId}-`)) {
+                        console.log(`🗑️ Removendo chave do localStorage: ${key} (usuário anterior ou chave antiga)`);
+                        localStorage.removeItem(key);
+                    } else {
+                        console.log(`⚠️ PROTEÇÃO: Tentativa de remover chave do usuário atual bloqueada: ${key}`);
+                    }
+                }
             }
         });
         
@@ -512,16 +555,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         availablePeople = [];
         isUpdatingFromRealtime = false;
         
-        // Limpar TODAS as chaves antigas do localStorage (chaves sem userId) para evitar confusão
-        console.log('🧹 Limpando chaves antigas do localStorage...');
+        // Limpar APENAS chaves antigas (sem userId) do localStorage - NUNCA remover dados do usuário atual
+        console.log('🧹 Verificando chaves antigas do localStorage (sem userId)...');
+        const userId = currentUser.toLowerCase().replace(/\s+/g, '_');
         const oldKeys = [
             'qualishel-panels', 'qualishel-panel-counter', 'qualishel-current-panel',
             'qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'
         ];
         oldKeys.forEach(key => {
-            if (localStorage.getItem(key)) {
-                console.log(`🗑️ Removendo chave antiga do localStorage: ${key}`);
+            // APENAS remover se a chave existir E não houver uma chave com userId correspondente
+            // Isso garante que não removemos dados válidos do usuário atual
+            const userSpecificKey = key.includes('-counter') 
+                ? `qualishel-${key.includes('panel') ? 'panel' : 'demand'}-counter-${userId}`
+                : `${key}-${userId}`;
+            const hasUserSpecificData = localStorage.getItem(userSpecificKey);
+            
+            if (localStorage.getItem(key) && !hasUserSpecificData) {
+                // Só remover se não houver dados específicos do usuário (migração de dados antigos)
+                console.log(`🗑️ Removendo chave antiga do localStorage (sem userId): ${key}`);
                 localStorage.removeItem(key);
+            } else if (localStorage.getItem(key) && hasUserSpecificData) {
+                // Se houver dados específicos do usuário, manter ambos (dados antigos podem ser migrados depois)
+                console.log(`ℹ️ Mantendo chave antiga ${key} (dados do usuário existem em ${userSpecificKey})`);
             }
         });
         
