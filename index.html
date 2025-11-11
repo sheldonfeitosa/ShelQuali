@@ -261,6 +261,24 @@
                         <p class="metric-value" id="metric-taxa">0%</p>
                     </div>
                 </div>
+
+                <div class="metric-card metric-card-gut">
+                    <div class="metric-icon">🧭</div>
+                    <div class="metric-content">
+                        <h3>Usando Matriz GUT</h3>
+                        <p class="metric-value" id="metric-gut-total">0</p>
+                        <p class="metric-subtitle">Score médio: <span id="metric-gut-avg">-</span></p>
+                    </div>
+                </div>
+
+                <div class="metric-card metric-card-w5h2">
+                    <div class="metric-icon">📊</div>
+                    <div class="metric-content">
+                        <h3>Com Análise 5W2H</h3>
+                        <p class="metric-value" id="metric-w5h2-total">0</p>
+                        <p class="metric-subtitle">Taxa de uso: <span id="metric-w5h2-rate">0%</span></p>
+                    </div>
+                </div>
             </div>
 
             <!-- Gráficos -->
@@ -491,6 +509,60 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Estatísticas Matriz GUT -->
+                <div class="summary-section">
+                    <h4>🧭 Matriz GUT</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Total usando GUT:</span>
+                            <span class="summary-value" id="report-gut-total">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Score médio GUT:</span>
+                            <span class="summary-value" id="report-gut-avg">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Score máximo:</span>
+                            <span class="summary-value" id="report-gut-max">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Score mínimo:</span>
+                            <span class="summary-value" id="report-gut-min">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Taxa de uso GUT:</span>
+                            <span class="summary-value" id="report-gut-rate">0%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Prioridade via GUT (Urgente):</span>
+                            <span class="summary-value" id="report-gut-urgent">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estatísticas 5W2H -->
+                <div class="summary-section">
+                    <h4>📊 Análise 5W2H</h4>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Total com 5W2H:</span>
+                            <span class="summary-value" id="report-w5h2-total">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Taxa de uso 5W2H:</span>
+                            <span class="summary-value" id="report-w5h2-rate">0%</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Completo (7 campos):</span>
+                            <span class="summary-value" id="report-w5h2-complete">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Parcial (1-6 campos):</span>
+                            <span class="summary-value" id="report-w5h2-partial">0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Tabela de Relatório -->
@@ -503,6 +575,8 @@
                             <th>Título</th>
                             <th>Status</th>
                             <th>Prioridade</th>
+                            <th>GUT</th>
+                            <th>5W2H</th>
                             <th>Responsável</th>
                             <th>Data Criação</th>
                             <th>Tempo Aberto</th>
@@ -860,13 +934,158 @@
                     <textarea id="demand-description" rows="4" placeholder="Descreva os detalhes da demanda..."></textarea>
                 </div>
                 <div class="form-group">
+                    <div class="w5h2-section">
+                        <div class="w5h2-header">
+                            <label class="w5h2-toggle-label" for="enable-5w2h">
+                                <input type="checkbox" id="enable-5w2h" class="w5h2-toggle">
+                                <div>
+                                    <span class="w5h2-title">
+                                        <span class="w5h2-icon">📊</span>
+                                        Ferramenta 5W2H
+                                    </span>
+                                    <span class="w5h2-subtitle">Preencha os campos para uma análise completa</span>
+                                </div>
+                            </label>
+                        </div>
+                        <div id="w5h2-panel" class="w5h2-panel" hidden>
+                            <div class="w5h2-grid">
+                                <div class="w5h2-item" data-field="what">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">🎯</span>
+                                        <span class="w5h2-item-title">O quê? (What)</span>
+                                    </div>
+                                    <textarea id="w5h2-what" class="w5h2-input" rows="2" placeholder="O que será feito? Descreva a ação ou atividade..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="who">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">👤</span>
+                                        <span class="w5h2-item-title">Quem? (Who)</span>
+                                    </div>
+                                    <textarea id="w5h2-who" class="w5h2-input" rows="2" placeholder="Quem será responsável? Liste as pessoas ou equipes..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="when">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">📅</span>
+                                        <span class="w5h2-item-title">Quando? (When)</span>
+                                    </div>
+                                    <textarea id="w5h2-when" class="w5h2-input" rows="2" placeholder="Quando será realizado? Defina prazos e cronograma..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="where">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">📍</span>
+                                        <span class="w5h2-item-title">Onde? (Where)</span>
+                                    </div>
+                                    <textarea id="w5h2-where" class="w5h2-input" rows="2" placeholder="Onde será executado? Especifique localização física ou virtual..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="why">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">❓</span>
+                                        <span class="w5h2-item-title">Por quê? (Why)</span>
+                                    </div>
+                                    <textarea id="w5h2-why" class="w5h2-input" rows="2" placeholder="Por que será feito? Explique o motivo e a justificativa..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="how">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">⚙️</span>
+                                        <span class="w5h2-item-title">Como? (How)</span>
+                                    </div>
+                                    <textarea id="w5h2-how" class="w5h2-input" rows="2" placeholder="Como será executado? Descreva o método, processo ou abordagem..."></textarea>
+                                </div>
+                                <div class="w5h2-item" data-field="howmuch">
+                                    <div class="w5h2-item-header">
+                                        <span class="w5h2-item-icon">💰</span>
+                                        <span class="w5h2-item-title">Quanto custa? (How Much)</span>
+                                    </div>
+                                    <textarea id="w5h2-howmuch" class="w5h2-input" rows="2" placeholder="Qual o custo estimado? Informe recursos financeiros, tempo ou outros investimentos..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="demand-priority">Prioridade</label>
-                    <select id="demand-priority">
-                        <option value="baixa">Baixa</option>
-                        <option value="media" selected>Média</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
+                    <div class="priority-control">
+                        <select id="demand-priority" data-default="media">
+                            <option value="baixa">Baixa</option>
+                            <option value="media" selected>Média</option>
+                            <option value="alta">Alta</option>
+                            <option value="urgente">Urgente</option>
+                        </select>
+                        <div class="priority-actions">
+                            <button type="button" class="btn-ghost" id="gut-trigger-btn">
+                                🧭 Usar Matriz GUT
+                            </button>
+                            <button type="button" class="btn-ghost btn-ghost-danger" id="gut-clear-btn" hidden>
+                                ✖️ Remover GUT
+                            </button>
+                            <span class="priority-mode-badge priority-media" id="priority-mode-badge" hidden>
+                                <span class="badge-icon">GUT</span>
+                                <span class="badge-score" id="priority-mode-badge-score">27</span>
+                                <span class="badge-label" id="priority-mode-badge-label">Média</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div id="gut-panel" class="gut-panel" hidden>
+                        <div class="gut-panel-header">
+                            <h4>Matriz GUT</h4>
+                            <p>Avalie Gravidade, Urgência e Tendência de 1 (baixo) a 5 (alto) para calcular a prioridade com precisão cirúrgica.</p>
+                        </div>
+                        <div class="gut-grid">
+                            <div class="gut-item" data-field="gravidade">
+                                <div class="gut-item-header">
+                                    <span class="gut-item-title">Gravidade</span>
+                                    <span class="gut-item-value" id="gut-gravidade-value">3</span>
+                                </div>
+                                <p>Avalie o impacto negativo que esta demanda causará se não for resolvida. Quanto maior o impacto, maior a gravidade.</p>
+                                <input type="range" min="1" max="5" step="1" value="3" id="gut-gravidade" class="gut-input" data-field="gravidade">
+                                <div class="gut-scale">
+                                    <span>1</span>
+                                    <span>3</span>
+                                    <span>5</span>
+                                </div>
+                            </div>
+                            <div class="gut-item" data-field="urgencia">
+                                <div class="gut-item-header">
+                                    <span class="gut-item-title">Urgência</span>
+                                    <span class="gut-item-value" id="gut-urgencia-value">3</span>
+                                </div>
+                                <p>Meça a velocidade com que esta demanda precisa ser atendida. Quanto mais rápido precisar ser resolvida, maior a urgência.</p>
+                                <input type="range" min="1" max="5" step="1" value="3" id="gut-urgencia" class="gut-input" data-field="urgencia">
+                                <div class="gut-scale">
+                                    <span>1</span>
+                                    <span>3</span>
+                                    <span>5</span>
+                                </div>
+                            </div>
+                            <div class="gut-item" data-field="tendencia">
+                                <div class="gut-item-header">
+                                    <span class="gut-item-title">Tendência</span>
+                                    <span class="gut-item-value" id="gut-tendencia-value">3</span>
+                                </div>
+                                <p>Avalie a probabilidade de esta situação piorar ou se agravar com o passar do tempo se não for tratada. Quanto maior a tendência de piorar, maior o valor.</p>
+                                <input type="range" min="1" max="5" step="1" value="3" id="gut-tendencia" class="gut-input" data-field="tendencia">
+                                <div class="gut-scale">
+                                    <span>1</span>
+                                    <span>3</span>
+                                    <span>5</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gut-score-summary">
+                            <div class="gut-score-info">
+                                <span class="gut-score-label">Score GUT</span>
+                                <span class="gut-score-value" id="gut-score-value">27</span>
+                                <span class="gut-score-tag priority-media" id="gut-score-tag">Prioridade Média</span>
+                            </div>
+                            <div class="gut-score-hint">
+                                <small>O score define automaticamente a prioridade do card.</small>
+                            </div>
+                        </div>
+                        <div class="gut-actions">
+                            <button type="button" class="btn-primary" id="gut-apply-btn">Aplicar GUT</button>
+                            <button type="button" class="btn-secondary" id="gut-cancel-btn">Cancelar</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="demand-responsible">Responsável</label>
@@ -1016,7 +1235,41 @@
         </div>
     </div>
 
+    <!-- Modal de Visualização do 5W2H -->
+    <div id="w5h2-view-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px; max-height: 95vh;">
+            <div class="modal-header">
+                <h3>📊 Análise 5W2H</h3>
+                <button class="modal-close" id="close-w5h2-view-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="w5h2-view-content">
+                <!-- Conteúdo do 5W2H será inserido aqui -->
+            </div>
+        </div>
+    </div>
+
     <!-- Modal para Tarefas e Chat -->
+    <!-- Modal de Visualização do Relatório do Card -->
+    <div id="card-report-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px; max-height: 95vh;">
+            <div class="modal-header">
+                <h3>📄 Relatório da Demanda</h3>
+                <button class="modal-close" id="close-card-report-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="card-report-content">
+                <!-- Conteúdo do relatório será inserido aqui -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" id="card-report-print-btn">
+                    🖨️ Imprimir
+                </button>
+                <button class="btn-primary" id="card-report-pdf-btn">
+                    📥 Baixar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="tasks-chat-modal" class="modal">
         <div class="modal-content modal-large">
             <div class="modal-header">

@@ -36,6 +36,291 @@ let currentUserName = 'Você'; // Nome do usuário atual (pode ser configurado)
 let panelSelector, newPanelBtn, managePanelsBtn, panelsModal, closePanelsModalBtn;
 let panelFormModal, closePanelFormModalBtn, panelForm, cancelPanelFormBtn, createPanelBtn;
 let currentPanelForEdit = null; // Armazena o ID do painel sendo editado
+const demandPrioritySelect = document.getElementById('demand-priority');
+const gutTriggerBtn = document.getElementById('gut-trigger-btn');
+const gutPanel = document.getElementById('gut-panel');
+const gutApplyBtn = document.getElementById('gut-apply-btn');
+const gutCancelBtn = document.getElementById('gut-cancel-btn');
+const gutClearBtn = document.getElementById('gut-clear-btn');
+const gutScoreValueEl = document.getElementById('gut-score-value');
+const gutScoreTagEl = document.getElementById('gut-score-tag');
+const gutInputs = document.querySelectorAll('.gut-input');
+const gutValueDisplays = {
+    gravidade: document.getElementById('gut-gravidade-value'),
+    urgencia: document.getElementById('gut-urgencia-value'),
+    tendencia: document.getElementById('gut-tendencia-value')
+};
+const priorityModeBadge = document.getElementById('priority-mode-badge');
+const priorityModeBadgeScore = document.getElementById('priority-mode-badge-score');
+const priorityModeBadgeLabel = document.getElementById('priority-mode-badge-label');
+
+let currentPriorityMode = 'manual';
+let currentGutState = {
+    gravidade: 3,
+    urgencia: 3,
+    tendencia: 3,
+    score: 27,
+    priority: 'media'
+};
+let draftGutState = { ...currentGutState };
+
+function createDefaultGutState(values = { gravidade: 3, urgencia: 3, tendencia: 3 }) {
+    const base = {
+        gravidade: Number(values.gravidade) || 3,
+        urgencia: Number(values.urgencia) || 3,
+        tendencia: Number(values.tendencia) || 3
+    };
+    base.score = calculateGutScore(base);
+    base.priority = mapGutScoreToPriority(base.score);
+    return base;
+}
+
+function calculateGutScore({ gravidade, urgencia, tendencia }) {
+    const g = Number(gravidade) || 0;
+    const u = Number(urgencia) || 0;
+    const t = Number(tendencia) || 0;
+    return g * u * t;
+}
+
+function mapGutScoreToPriority(score) {
+    if (score >= 100) return 'urgente';
+    if (score >= 65) return 'alta';
+    if (score >= 28) return 'media';
+    return 'baixa';
+}
+
+function getPriorityLabel(priority) {
+    return {
+        baixa: 'Baixa',
+        media: 'Média',
+        alta: 'Alta',
+        urgente: 'Urgente'
+    }[priority] || 'Média';
+}
+
+function syncGutInputsFromState(state) {
+    if (!gutInputs) return;
+    gutInputs.forEach(input => {
+        const field = input.dataset.field;
+        if (!field || typeof state[field] === 'undefined') return;
+        input.value = state[field];
+        if (gutValueDisplays[field]) {
+            gutValueDisplays[field].textContent = state[field];
+        }
+    });
+}
+
+function updateGutPreview(state = draftGutState) {
+    if (!gutScoreValueEl || !gutScoreTagEl) return;
+    const score = calculateGutScore(state);
+    const priority = mapGutScoreToPriority(score);
+    gutScoreValueEl.textContent = score;
+    gutScoreTagEl.textContent = `Prioridade ${getPriorityLabel(priority)}`;
+    gutScoreTagEl.classList.remove('priority-baixa', 'priority-media', 'priority-alta', 'priority-urgente');
+    gutScoreTagEl.classList.add(`priority-${priority}`);
+}
+
+function openGutPanel() {
+    if (!gutPanel) return;
+    gutPanel.classList.add('is-open');
+    gutPanel.removeAttribute('hidden');
+}
+
+function closeGutPanel() {
+    if (!gutPanel) return;
+    gutPanel.classList.remove('is-open');
+    gutPanel.setAttribute('hidden', 'true');
+}
+
+function updatePriorityModeBadge() {
+    if (!priorityModeBadge) return;
+    if (currentPriorityMode !== 'gut') {
+        priorityModeBadge.hidden = true;
+        priorityModeBadge.classList.remove('priority-baixa', 'priority-media', 'priority-alta', 'priority-urgente');
+        return;
+    }
+
+    const score = currentGutState.score ?? calculateGutScore(currentGutState);
+    const priority = currentGutState.priority ?? mapGutScoreToPriority(score);
+
+    priorityModeBadge.hidden = false;
+    priorityModeBadge.classList.remove('priority-baixa', 'priority-media', 'priority-alta', 'priority-urgente');
+    priorityModeBadge.classList.add(`priority-${priority}`);
+
+    if (priorityModeBadgeScore) {
+        priorityModeBadgeScore.textContent = score;
+    }
+    if (priorityModeBadgeLabel) {
+        priorityModeBadgeLabel.textContent = getPriorityLabel(priority);
+    }
+}
+
+function setPriorityUiForManual({ resetSelectValue = false, syncDraft = false } = {}) {
+    currentPriorityMode = 'manual';
+    if (demandPrioritySelect) {
+        demandPrioritySelect.disabled = false;
+        demandPrioritySelect.classList.remove('priority-select-locked');
+        if (resetSelectValue) {
+            const defaultValue = demandPrioritySelect.dataset.default || demandPrioritySelect.getAttribute('data-default') || 'media';
+            demandPrioritySelect.value = defaultValue;
+        }
+    }
+
+    if (gutTriggerBtn) {
+        gutTriggerBtn.textContent = '🧭 Usar Matriz GUT';
+    }
+    if (gutClearBtn) {
+        gutClearBtn.hidden = true;
+    }
+
+    closeGutPanel();
+
+    if (priorityModeBadge) {
+        priorityModeBadge.hidden = true;
+        priorityModeBadge.classList.remove('priority-baixa', 'priority-media', 'priority-alta', 'priority-urgente');
+    }
+
+    if (syncDraft) {
+        draftGutState = createDefaultGutState();
+        syncGutInputsFromState(draftGutState);
+        updateGutPreview(draftGutState);
+    }
+}
+
+function setPriorityUiForGut() {
+    currentPriorityMode = 'gut';
+    if (demandPrioritySelect) {
+        demandPrioritySelect.disabled = true;
+        demandPrioritySelect.classList.add('priority-select-locked');
+        demandPrioritySelect.value = currentGutState.priority;
+    }
+
+    if (gutTriggerBtn) {
+        gutTriggerBtn.textContent = '✏️ Ajustar Matriz GUT';
+    }
+    if (gutClearBtn) {
+        gutClearBtn.hidden = false;
+    }
+
+    updatePriorityModeBadge();
+    closeGutPanel();
+}
+
+function resetPriorityControls({ resetSelectValue = false } = {}) {
+    currentGutState = createDefaultGutState();
+    draftGutState = { ...currentGutState };
+    setPriorityUiForManual({ resetSelectValue, syncDraft: true });
+}
+
+function applyGutSelection() {
+    const score = calculateGutScore(draftGutState);
+    const priority = mapGutScoreToPriority(score);
+    currentGutState = {
+        gravidade: draftGutState.gravidade,
+        urgencia: draftGutState.urgencia,
+        tendencia: draftGutState.tendencia,
+        score,
+        priority
+    };
+    setPriorityUiForGut();
+}
+
+function clearGutSelection({ resetSelectValue = false } = {}) {
+    resetPriorityControls({ resetSelectValue });
+}
+
+function setPriorityStateFromDemand(demand) {
+    if (!demand) return;
+    if (demand.priorityStrategy === 'gut' && demand.gut) {
+        currentGutState = {
+            gravidade: Number(demand.gut.gravidade) || 3,
+            urgencia: Number(demand.gut.urgencia) || 3,
+            tendencia: Number(demand.gut.tendencia) || 3,
+            score: Number(demand.gut.score) || calculateGutScore(demand.gut),
+            priority: demand.gut.priority || demand.priority || 'media'
+        };
+        draftGutState = { ...currentGutState };
+        syncGutInputsFromState(draftGutState);
+        updateGutPreview(draftGutState);
+        setPriorityUiForGut();
+    } else {
+        draftGutState = createDefaultGutState();
+        currentGutState = { ...draftGutState };
+        syncGutInputsFromState(draftGutState);
+        updateGutPreview(draftGutState);
+        setPriorityUiForManual({ resetSelectValue: false });
+        if (demandPrioritySelect) {
+            demandPrioritySelect.value = demand.priority;
+        }
+    }
+}
+
+function extractPriorityData() {
+    if (currentPriorityMode === 'gut') {
+        const score = currentGutState.score ?? calculateGutScore(currentGutState);
+        const priority = currentGutState.priority ?? mapGutScoreToPriority(score);
+        return {
+            priority,
+            priorityStrategy: 'gut',
+            gut: {
+                gravidade: currentGutState.gravidade,
+                urgencia: currentGutState.urgencia,
+                tendencia: currentGutState.tendencia,
+                score,
+                priority
+            }
+        };
+    }
+
+    return {
+        priority: demandPrioritySelect ? demandPrioritySelect.value : 'media',
+        priorityStrategy: 'manual',
+        gut: null
+    };
+}
+
+function handleGutTrigger() {
+    if (!gutPanel) return;
+    if (!gutPanel.hasAttribute('hidden') && gutPanel.classList.contains('is-open')) {
+        closeGutPanel();
+        return;
+    }
+
+    draftGutState = currentPriorityMode === 'gut'
+        ? { ...currentGutState }
+        : createDefaultGutState();
+
+    syncGutInputsFromState(draftGutState);
+    updateGutPreview(draftGutState);
+    openGutPanel();
+}
+
+function handleGutInput(event) {
+    const input = event.target;
+    if (!input || !input.dataset.field) return;
+    const field = input.dataset.field;
+    const value = parseInt(input.value, 10) || 1;
+    draftGutState[field] = value;
+    if (gutValueDisplays[field]) {
+        gutValueDisplays[field].textContent = value;
+    }
+    updateGutPreview(draftGutState);
+}
+
+function handleGutApply() {
+    applyGutSelection();
+}
+
+function handleGutCancel() {
+    if (currentPriorityMode === 'gut') {
+        draftGutState = { ...currentGutState };
+    } else {
+        draftGutState = createDefaultGutState();
+    }
+    syncGutInputsFromState(draftGutState);
+    updateGutPreview(draftGutState);
+    closeGutPanel();
+}
 
 // Registrar Service Worker para PWA
 // Service Worker só funciona em HTTPS ou localhost, não em file://
@@ -678,6 +963,38 @@ function setupEventListeners() {
         if (e.target === demandModal) closeModal();
     });
 
+    if (gutTriggerBtn) {
+        gutTriggerBtn.addEventListener('click', handleGutTrigger);
+    }
+    if (gutCancelBtn) {
+        gutCancelBtn.addEventListener('click', handleGutCancel);
+    }
+    if (gutApplyBtn) {
+        gutApplyBtn.addEventListener('click', handleGutApply);
+    }
+    if (gutClearBtn) {
+        gutClearBtn.addEventListener('click', () => clearGutSelection({ resetSelectValue: false }));
+    }
+    if (gutInputs && gutInputs.length > 0) {
+        gutInputs.forEach(input => {
+            input.addEventListener('input', handleGutInput);
+        });
+    }
+    if (demandPrioritySelect) {
+        demandPrioritySelect.addEventListener('change', () => {
+            currentPriorityMode = 'manual';
+            setPriorityUiForManual({ resetSelectValue: false });
+        });
+    }
+
+    // 5W2H Toggle
+    const enable5W2HCheckbox = document.getElementById('enable-5w2h');
+    if (enable5W2HCheckbox) {
+        enable5W2HCheckbox.addEventListener('change', (e) => {
+            toggleW5H2Panel(e.target.checked);
+        });
+    }
+
     // Modal de Prazo
     closeDeadlineModalBtn.addEventListener('click', () => closeDeadlineModal());
     cancelDeadlineBtn.addEventListener('click', () => closeDeadlineModal());
@@ -714,6 +1031,40 @@ function setupEventListeners() {
     const testInviteLinkBtn = document.getElementById('test-invite-link-btn');
     if (testInviteLinkBtn) {
         testInviteLinkBtn.addEventListener('click', testInviteLink);
+    }
+
+    // Modal de Relatório do Card
+    const closeCardReportModalBtn = document.getElementById('close-card-report-modal');
+    const cardReportModal = document.getElementById('card-report-modal');
+    const cardReportPrintBtn = document.getElementById('card-report-print-btn');
+    const cardReportPdfBtn = document.getElementById('card-report-pdf-btn');
+    
+    if (closeCardReportModalBtn) {
+        closeCardReportModalBtn.addEventListener('click', closeCardReportModal);
+    }
+    if (cardReportModal) {
+        cardReportModal.addEventListener('click', (e) => {
+            if (e.target === cardReportModal) closeCardReportModal();
+        });
+    }
+    if (cardReportPrintBtn) {
+        cardReportPrintBtn.addEventListener('click', printCardReport);
+    }
+    if (cardReportPdfBtn) {
+        cardReportPdfBtn.addEventListener('click', generateCardReportPDFFromModal);
+    }
+
+    // Modal de Visualização do 5W2H
+    const closeW5H2ViewModalBtn = document.getElementById('close-w5h2-view-modal');
+    const w5h2ViewModal = document.getElementById('w5h2-view-modal');
+    
+    if (closeW5H2ViewModalBtn) {
+        closeW5H2ViewModalBtn.addEventListener('click', closeW5H2ViewModal);
+    }
+    if (w5h2ViewModal) {
+        w5h2ViewModal.addEventListener('click', (e) => {
+            if (e.target === w5h2ViewModal) closeW5H2ViewModal();
+        });
     }
 
     // Configuração de URL de Produção
@@ -850,12 +1201,22 @@ function openModal() {
     if (submitBtn) {
         submitBtn.textContent = 'Criar Demanda';
     }
+    resetPriorityControls({ resetSelectValue: true });
 }
 
 function closeModal() {
     demandModal.classList.remove('active');
     document.body.style.overflow = '';
     demandForm.reset();
+    resetPriorityControls({ resetSelectValue: true });
+    
+    // Limpar campos 5W2H
+    const enableCheckbox = document.getElementById('enable-5w2h');
+    if (enableCheckbox) {
+        enableCheckbox.checked = false;
+        toggleW5H2Panel(false);
+    }
+    
     document.querySelector('.modal-header h3').textContent = 'Nova Demanda';
     // Restaurar texto do botão para criar nova demanda
     const submitBtn = document.getElementById('submit-demand-btn');
@@ -864,6 +1225,133 @@ function closeModal() {
     }
     // Restaurar comportamento padrão do formulário
     demandForm.onsubmit = handleFormSubmit;
+}
+
+// Funções 5W2H
+function toggleW5H2Panel(show) {
+    const panel = document.getElementById('w5h2-panel');
+    if (!panel) return;
+    
+    if (show) {
+        panel.classList.add('is-open');
+        panel.removeAttribute('hidden');
+    } else {
+        panel.classList.remove('is-open');
+        panel.setAttribute('hidden', 'true');
+    }
+}
+
+window.toggleW5H2Expand = function(demandId) {
+    const content = document.getElementById(`w5h2-content-${demandId}`);
+    const header = document.querySelector(`#w5h2-content-${demandId}`)?.closest('.card-w5h2')?.querySelector('.w5h2-card-header');
+    if (!content || !header) return;
+    
+    const isExpanded = content.classList.contains('expanded');
+    const toggle = header.querySelector('.w5h2-card-toggle');
+    
+    if (isExpanded) {
+        content.classList.remove('expanded');
+        if (toggle) toggle.textContent = '▼';
+    } else {
+        content.classList.add('expanded');
+        if (toggle) toggle.textContent = '▲';
+    }
+};
+
+// Abrir modal de visualização do 5W2H
+window.openW5H2ViewModal = function(demandId) {
+    const demand = demands.find(d => d.id === demandId);
+    if (!demand || !demand.w5h2 || !demand.w5h2.enabled) {
+        return;
+    }
+    
+    const modal = document.getElementById('w5h2-view-modal');
+    const content = document.getElementById('w5h2-view-content');
+    
+    if (!modal || !content) return;
+    
+    // Renderizar conteúdo do 5W2H
+    renderW5H2ViewContent(demand.w5h2, content);
+    
+    // Abrir modal
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+};
+
+function renderW5H2ViewContent(w5h2, container) {
+    const w5h2Fields = [
+        { label: 'O quê? (What)', value: w5h2.what, icon: '🎯', description: 'O que será feito? Descreva a ação ou atividade.' },
+        { label: 'Quem? (Who)', value: w5h2.who, icon: '👤', description: 'Quem será responsável? Liste as pessoas ou equipes.' },
+        { label: 'Quando? (When)', value: w5h2.when, icon: '📅', description: 'Quando será realizado? Defina prazos e cronograma.' },
+        { label: 'Onde? (Where)', value: w5h2.where, icon: '📍', description: 'Onde será executado? Especifique localização física ou virtual.' },
+        { label: 'Por quê? (Why)', value: w5h2.why, icon: '❓', description: 'Por que será feito? Explique o motivo e a justificativa.' },
+        { label: 'Como? (How)', value: w5h2.how, icon: '⚙️', description: 'Como será executado? Descreva o método, processo ou abordagem.' },
+        { label: 'Quanto custa? (How Much)', value: w5h2.howMuch, icon: '💰', description: 'Qual o custo estimado? Informe recursos financeiros, tempo ou outros investimentos.' }
+    ];
+    
+    let html = `
+        <div class="w5h2-view-container">
+            <div class="w5h2-view-header">
+                <div class="w5h2-view-brand">
+                    <h2>📊 Análise 5W2H</h2>
+                    <p>Ferramenta de qualidade para análise completa de demandas</p>
+                </div>
+            </div>
+            
+            <div class="w5h2-view-grid">
+    `;
+    
+    w5h2Fields.forEach(field => {
+        html += `
+            <div class="w5h2-view-item ${field.value ? 'has-content' : 'empty'}">
+                <div class="w5h2-view-item-header">
+                    <span class="w5h2-view-icon">${field.icon}</span>
+                    <div class="w5h2-view-title-section">
+                        <h4 class="w5h2-view-title">${field.label}</h4>
+                        <p class="w5h2-view-description">${field.description}</p>
+                    </div>
+                </div>
+                <div class="w5h2-view-item-content">
+                    ${field.value ? `
+                        <div class="w5h2-view-value">${escapeHtml(field.value).replace(/\n/g, '<br>')}</div>
+                    ` : `
+                        <div class="w5h2-view-empty">
+                            <span class="empty-icon">—</span>
+                            <span class="empty-text">Não preenchido</span>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `
+            </div>
+            
+            <div class="w5h2-view-summary">
+                <div class="summary-item">
+                    <span class="summary-label">Campos preenchidos:</span>
+                    <span class="summary-value">${w5h2Fields.filter(f => f.value).length} de ${w5h2Fields.length}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Status:</span>
+                    <span class="summary-value ${w5h2Fields.filter(f => f.value).length === w5h2Fields.length ? 'complete' : 'partial'}">
+                        ${w5h2Fields.filter(f => f.value).length === w5h2Fields.length ? '✓ Completo' : '○ Parcial'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+function closeW5H2ViewModal() {
+    const modal = document.getElementById('w5h2-view-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
 }
 
 // Navegação
@@ -905,12 +1393,29 @@ function handleFormSubmit(e) {
         return;
     }
 
+    const priorityData = extractPriorityData();
+
+    // Coletar dados 5W2H
+    const w5h2Data = {
+        enabled: document.getElementById('enable-5w2h')?.checked || false,
+        what: document.getElementById('w5h2-what')?.value || '',
+        who: document.getElementById('w5h2-who')?.value || '',
+        when: document.getElementById('w5h2-when')?.value || '',
+        where: document.getElementById('w5h2-where')?.value || '',
+        why: document.getElementById('w5h2-why')?.value || '',
+        how: document.getElementById('w5h2-how')?.value || '',
+        howMuch: document.getElementById('w5h2-howmuch')?.value || ''
+    };
+
     const demand = {
         id: demandIdCounter++,
         panelId: currentPanelId, // Associar demanda ao painel atual
         title: document.getElementById('demand-title').value,
         description: document.getElementById('demand-description').value,
-        priority: document.getElementById('demand-priority').value,
+        w5h2: w5h2Data.enabled ? w5h2Data : null,
+        priority: priorityData.priority,
+        priorityStrategy: priorityData.priorityStrategy,
+        gut: priorityData.gut,
         responsible: document.getElementById('demand-responsible').value || 'Não atribuído',
         status: document.getElementById('demand-status').value,
         createdAt: new Date().toISOString(),
@@ -928,7 +1433,8 @@ function handleFormSubmit(e) {
         details: {
             title: demand.title,
             status: demand.status,
-            priority: demand.priority
+            priority: demand.priority,
+            priorityStrategy: demand.priorityStrategy
         }
     });
 
@@ -1037,6 +1543,38 @@ function createCard(demand) {
         'alta': 'A',
         'urgente': 'U'
     }[demand.priority];
+    const priorityLabelFull = {
+        'baixa': 'Baixa',
+        'media': 'Média',
+        'alta': 'Alta',
+        'urgente': 'Urgente'
+    }[demand.priority];
+    const priorityStrategy = demand.priorityStrategy || 'manual';
+    const gutScore = demand.gut?.score ?? null;
+    
+    // Se usar GUT, badge será posicionado no topo do card
+    let priorityStackHtml = '';
+    let gutBadgeAbsolute = '';
+    if (priorityStrategy === 'gut') {
+        gutBadgeAbsolute = `
+            <span class="card-gut-badge-top-item ${priorityClass}" title="Prioridade calculada via Matriz GUT (Score ${gutScore ?? 'N/D'})">
+                <span class="gut-badge-label">GUT</span>
+                <span class="gut-badge-content">
+                    <span class="gut-score">${gutScore ?? '--'}</span>
+                    <span class="gut-priority-label">${priorityLabelFull}</span>
+                </span>
+            </span>
+        `;
+        // Não mostrar badge de prioridade normal quando usar GUT
+        priorityStackHtml = '';
+    } else {
+        // Se não usar GUT, mostrar apenas o badge de prioridade normal
+        priorityStackHtml = `
+            <div class="card-priority-stack">
+                <span class="card-bar-priority ${priorityClass}">${priorityLabel}</span>
+            </div>
+        `;
+    }
 
     const date = new Date(demand.createdAt);
     const formattedDate = date.toLocaleDateString('pt-BR', {
@@ -1189,10 +1727,17 @@ function createCard(demand) {
     
     card.innerHTML = `
         <div class="card-bar" onclick="toggleCardExpand(${demand.id})">
+            ${priorityStrategy === 'gut' ? `
+                <div class="card-gut-badge-top">
+                    ${gutBadgeAbsolute}
+                </div>
+            ` : ''}
             <div class="card-bar-content">
-                <span class="card-bar-priority ${priorityClass}">${priorityLabel}</span>
-                <div class="card-bar-title">${escapeHtml(demand.title)}</div>
-                ${deadlineIconHtml}
+                ${priorityStackHtml}
+                <div class="card-bar-main">
+                    <div class="card-bar-title">${escapeHtml(demand.title)}</div>
+                    ${deadlineIconHtml}
+                </div>
             </div>
             ${summaryBannerHtml}
         </div>
@@ -1201,6 +1746,9 @@ function createCard(demand) {
                 <button class="card-action-btn" onclick="editDemand(${demand.id})" title="Editar">
                     ✏️
                 </button>
+                <button class="card-action-btn" onclick="generateCardReportPDF(${demand.id})" title="Gerar Relatório PDF">
+                    📄
+                </button>
                 <button class="card-action-btn" onclick="manageCollaborators(${demand.id})" title="Gerenciar Colaboradores">
                     👥
                 </button>
@@ -1208,10 +1756,83 @@ function createCard(demand) {
                     📦
                 </button>
             </div>
-            <div class="card-header">
-                <div class="card-title">${escapeHtml(demand.title)}</div>
-            </div>
             ${demand.description ? `<div class="card-description">${escapeHtml(demand.description)}</div>` : ''}
+            ${demand.w5h2 && demand.w5h2.enabled ? `
+                <div class="card-w5h2">
+                    <div class="w5h2-card-header" onclick="openW5H2ViewModal(${demand.id})">
+                        <span class="w5h2-card-icon">📊</span>
+                        <span class="w5h2-card-title">Análise 5W2H</span>
+                        <span class="w5h2-card-toggle">👁️</span>
+                    </div>
+                    <div class="w5h2-card-content" id="w5h2-content-${demand.id}" style="max-height: 0; opacity: 0; padding: 0 1rem;">
+                        <div class="w5h2-card-grid">
+                            ${demand.w5h2.what ? `
+                                <div class="w5h2-card-item" data-field="what">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">🎯</span>
+                                        <span class="w5h2-card-item-label">O quê?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.what)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.who ? `
+                                <div class="w5h2-card-item" data-field="who">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">👤</span>
+                                        <span class="w5h2-card-item-label">Quem?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.who)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.when ? `
+                                <div class="w5h2-card-item" data-field="when">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">📅</span>
+                                        <span class="w5h2-card-item-label">Quando?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.when)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.where ? `
+                                <div class="w5h2-card-item" data-field="where">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">📍</span>
+                                        <span class="w5h2-card-item-label">Onde?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.where)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.why ? `
+                                <div class="w5h2-card-item" data-field="why">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">❓</span>
+                                        <span class="w5h2-card-item-label">Por quê?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.why)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.how ? `
+                                <div class="w5h2-card-item" data-field="how">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">⚙️</span>
+                                        <span class="w5h2-card-item-label">Como?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.how)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.w5h2.howMuch ? `
+                                <div class="w5h2-card-item" data-field="howmuch">
+                                    <div class="w5h2-card-item-header">
+                                        <span class="w5h2-card-item-icon">💰</span>
+                                        <span class="w5h2-card-item-label">Quanto custa?</span>
+                                    </div>
+                                    <div class="w5h2-card-item-value">${escapeHtml(demand.w5h2.howMuch)}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
             ${deadlineHtml}
             ${progressHtml}
             ${collaboratorsHtml}
@@ -1440,9 +2061,31 @@ function editDemand(id) {
     // Preencher os campos do formulário
     document.getElementById('demand-title').value = demand.title;
     document.getElementById('demand-description').value = demand.description;
-    document.getElementById('demand-priority').value = demand.priority;
+    setPriorityStateFromDemand(demand);
     document.getElementById('demand-responsible').value = demand.responsible;
     document.getElementById('demand-status').value = demand.status;
+    
+    // Preencher dados 5W2H
+    if (demand.w5h2 && demand.w5h2.enabled) {
+        const enableCheckbox = document.getElementById('enable-5w2h');
+        if (enableCheckbox) {
+            enableCheckbox.checked = true;
+            toggleW5H2Panel(true);
+        }
+        if (document.getElementById('w5h2-what')) document.getElementById('w5h2-what').value = demand.w5h2.what || '';
+        if (document.getElementById('w5h2-who')) document.getElementById('w5h2-who').value = demand.w5h2.who || '';
+        if (document.getElementById('w5h2-when')) document.getElementById('w5h2-when').value = demand.w5h2.when || '';
+        if (document.getElementById('w5h2-where')) document.getElementById('w5h2-where').value = demand.w5h2.where || '';
+        if (document.getElementById('w5h2-why')) document.getElementById('w5h2-why').value = demand.w5h2.why || '';
+        if (document.getElementById('w5h2-how')) document.getElementById('w5h2-how').value = demand.w5h2.how || '';
+        if (document.getElementById('w5h2-howmuch')) document.getElementById('w5h2-howmuch').value = demand.w5h2.howMuch || '';
+    } else {
+        const enableCheckbox = document.getElementById('enable-5w2h');
+        if (enableCheckbox) {
+            enableCheckbox.checked = false;
+            toggleW5H2Panel(false);
+        }
+    }
 
     // Armazenar ID da demanda sendo editada para garantir que não crie nova
     let editingDemandId = id;
@@ -1460,15 +2103,33 @@ function editDemand(id) {
         
         const oldStatus = demandToEdit.status;
         const oldPriority = demandToEdit.priority;
+        const oldPriorityStrategy = demandToEdit.priorityStrategy || 'manual';
+        const oldGutScore = demandToEdit.gut ? demandToEdit.gut.score : null;
         const oldTitle = demandToEdit.title;
         const oldResponsible = demandToEdit.responsible;
+        
+        // Coletar dados 5W2H
+        const w5h2Data = {
+            enabled: document.getElementById('enable-5w2h')?.checked || false,
+            what: document.getElementById('w5h2-what')?.value || '',
+            who: document.getElementById('w5h2-who')?.value || '',
+            when: document.getElementById('w5h2-when')?.value || '',
+            where: document.getElementById('w5h2-where')?.value || '',
+            why: document.getElementById('w5h2-why')?.value || '',
+            how: document.getElementById('w5h2-how')?.value || '',
+            howMuch: document.getElementById('w5h2-howmuch')?.value || ''
+        };
         
         // Atualizar apenas o objeto existente (não criar novo)
         demandToEdit.title = document.getElementById('demand-title').value;
         demandToEdit.description = document.getElementById('demand-description').value;
-        demandToEdit.priority = document.getElementById('demand-priority').value;
+        demandToEdit.w5h2 = w5h2Data.enabled ? w5h2Data : null;
         demandToEdit.responsible = document.getElementById('demand-responsible').value;
         demandToEdit.status = document.getElementById('demand-status').value;
+        const updatedPriorityData = extractPriorityData();
+        demandToEdit.priority = updatedPriorityData.priority;
+        demandToEdit.priorityStrategy = updatedPriorityData.priorityStrategy;
+        demandToEdit.gut = updatedPriorityData.gut;
         
         // Adicionar ao histórico de mudanças
         const changes = [];
@@ -1478,8 +2139,19 @@ function editDemand(id) {
         if (oldStatus !== demandToEdit.status) {
             changes.push({ field: 'status', from: oldStatus, to: demandToEdit.status });
         }
-        if (oldPriority !== demandToEdit.priority) {
+        const priorityChanged = oldPriority !== demandToEdit.priority;
+        const strategyChanged = oldPriorityStrategy !== demandToEdit.priorityStrategy;
+        const newGutScore = demandToEdit.gut ? demandToEdit.gut.score : null;
+        const gutScoreChanged = oldGutScore !== newGutScore;
+
+        if (priorityChanged) {
             changes.push({ field: 'priority', from: oldPriority, to: demandToEdit.priority });
+        }
+        if (strategyChanged) {
+            changes.push({ field: 'priorityStrategy', from: oldPriorityStrategy, to: demandToEdit.priorityStrategy });
+        }
+        if (gutScoreChanged) {
+            changes.push({ field: 'gutScore', from: oldGutScore, to: newGutScore });
         }
         if (oldResponsible !== demandToEdit.responsible) {
             changes.push({ field: 'responsible', from: oldResponsible, to: demandToEdit.responsible });
@@ -1503,8 +2175,12 @@ function editDemand(id) {
         if (oldStatus !== demandToEdit.status) {
             notifyCollaboratorsAboutUpdate(demandToEdit, 'status_changed', { newStatus: demandToEdit.status });
         }
-        if (oldPriority !== demandToEdit.priority) {
-            notifyCollaboratorsAboutUpdate(demandToEdit, 'priority_changed', { newPriority: demandToEdit.priority });
+        if (priorityChanged || strategyChanged || gutScoreChanged) {
+            notifyCollaboratorsAboutUpdate(demandToEdit, 'priority_changed', { 
+                newPriority: demandToEdit.priority,
+                priorityStrategy: demandToEdit.priorityStrategy,
+                gutScore: demandToEdit.gut ? demandToEdit.gut.score : null
+            });
         }
         
         closeModal();
@@ -2634,6 +3310,30 @@ async function loadDemands() {
             demand.deadlineHistory = demand.deadlineHistory.filter(entry => 
                 entry && entry.timestamp && entry.reason && entry.author
             );
+        }
+
+        // Garantir que w5h2 seja inicializado
+        if (!demand.w5h2) {
+            demand.w5h2 = null;
+        }
+        
+        if (!demand.priorityStrategy) {
+            demand.priorityStrategy = 'manual';
+        }
+        if (demand.priorityStrategy === 'gut') {
+            if (!demand.gut) {
+                demand.priorityStrategy = 'manual';
+            } else {
+                demand.gut.gravidade = Number(demand.gut.gravidade) || 3;
+                demand.gut.urgencia = Number(demand.gut.urgencia) || 3;
+                demand.gut.tendencia = Number(demand.gut.tendencia) || 3;
+                demand.gut.score = Number(demand.gut.score) || calculateGutScore(demand.gut);
+                demand.gut.priority = demand.gut.priority || mapGutScoreToPriority(demand.gut.score);
+                demand.priority = demand.gut.priority;
+            }
+        } else if (demand.gut) {
+            // limpar resíduos GUT se a estratégia atual for manual
+            demand.gut = null;
         }
         
         // Garantir que todos os cards tenham um panelId válido
@@ -4659,7 +5359,12 @@ async function notifyCollaboratorsAboutUpdate(demand, updateType, updateDetails 
             break;
         case 'priority_changed':
             updateTitle = 'Prioridade alterada';
-            updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
+            if (updateDetails.priorityStrategy === 'gut') {
+                const gutScoreText = updateDetails.gutScore ? ` (Score GUT ${updateDetails.gutScore})` : '';
+                updateMessage = `A prioridade da demanda "${demand.title}" foi recalculada pela Matriz GUT${gutScoreText}, resultando em "${updateDetails.newPriority || demand.priority}".`;
+            } else {
+                updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
+            }
             break;
         default:
             updateTitle = 'Atualização na demanda';
@@ -5037,12 +5742,37 @@ function updateMetrics() {
     const urgentes = dashboardDemands.filter(d => d.priority === 'urgente').length;
     const taxa = total > 0 ? Math.round((concluidas / total) * 100) : 0;
 
+    // Estatísticas GUT
+    const gutDemands = dashboardDemands.filter(d => d.priorityStrategy === 'gut' && d.gut);
+    const gutTotal = gutDemands.length;
+    const gutScores = gutDemands.map(d => d.gut?.score || 0).filter(s => s > 0);
+    const gutAvg = gutScores.length > 0 
+        ? Math.round(gutScores.reduce((a, b) => a + b, 0) / gutScores.length)
+        : 0;
+
+    // Estatísticas 5W2H
+    const w5h2Demands = dashboardDemands.filter(d => d.w5h2 && d.w5h2.enabled);
+    const w5h2Total = w5h2Demands.length;
+    const w5h2Rate = total > 0 ? Math.round((w5h2Total / total) * 100) : 0;
+
     document.getElementById('metric-total').textContent = total;
     document.getElementById('metric-pendentes').textContent = pendentes;
     document.getElementById('metric-andamento').textContent = andamento;
     document.getElementById('metric-concluidas').textContent = concluidas;
     document.getElementById('metric-urgentes').textContent = urgentes;
     document.getElementById('metric-taxa').textContent = taxa + '%';
+    
+    // Atualizar métricas GUT
+    const metricGutTotal = document.getElementById('metric-gut-total');
+    const metricGutAvg = document.getElementById('metric-gut-avg');
+    if (metricGutTotal) metricGutTotal.textContent = gutTotal;
+    if (metricGutAvg) metricGutAvg.textContent = gutAvg > 0 ? gutAvg : '-';
+    
+    // Atualizar métricas 5W2H
+    const metricW5H2Total = document.getElementById('metric-w5h2-total');
+    const metricW5H2Rate = document.getElementById('metric-w5h2-rate');
+    if (metricW5H2Total) metricW5H2Total.textContent = w5h2Total;
+    if (metricW5H2Rate) metricW5H2Rate.textContent = w5h2Rate + '%';
 }
 
 function renderCharts() {
@@ -5943,6 +6673,31 @@ function updateReportSummary() {
     const priorityMedium = filteredDemands.filter(d => d.priority === 'media').length;
     const priorityLow = filteredDemands.filter(d => d.priority === 'baixa').length;
     
+    // ========== ESTATÍSTICAS MATRIZ GUT ==========
+    const gutDemands = filteredDemands.filter(d => d.priorityStrategy === 'gut' && d.gut);
+    const gutTotal = gutDemands.length;
+    const gutScores = gutDemands.map(d => d.gut?.score || 0).filter(s => s > 0);
+    const gutAvg = gutScores.length > 0 
+        ? Math.round(gutScores.reduce((a, b) => a + b, 0) / gutScores.length)
+        : null;
+    const gutMax = gutScores.length > 0 ? Math.max(...gutScores) : null;
+    const gutMin = gutScores.length > 0 ? Math.min(...gutScores) : null;
+    const gutRate = total > 0 ? Math.round((gutTotal / total) * 100) : 0;
+    const gutUrgent = gutDemands.filter(d => d.priority === 'urgente').length;
+    
+    // ========== ESTATÍSTICAS 5W2H ==========
+    const w5h2Demands = filteredDemands.filter(d => d.w5h2 && d.w5h2.enabled);
+    const w5h2Total = w5h2Demands.length;
+    const w5h2Rate = total > 0 ? Math.round((w5h2Total / total) * 100) : 0;
+    
+    // Contar demandas com 5W2H completo (todos os 7 campos preenchidos)
+    const w5h2Complete = w5h2Demands.filter(d => {
+        const w5h2 = d.w5h2;
+        return w5h2.what && w5h2.who && w5h2.when && w5h2.where && 
+               w5h2.why && w5h2.how && w5h2.howMuch;
+    }).length;
+    const w5h2Partial = w5h2Total - w5h2Complete;
+    
     // ========== ATUALIZAR ELEMENTOS DO DOM ==========
     // Função auxiliar para atualizar elemento de forma segura
     const updateElement = (id, value) => {
@@ -5977,6 +6732,20 @@ function updateReportSummary() {
     updateElement('report-priority-high', priorityHigh);
     updateElement('report-priority-medium', priorityMedium);
     updateElement('report-priority-low', priorityLow);
+    
+    // Estatísticas GUT
+    updateElement('report-gut-total', gutTotal);
+    updateElement('report-gut-avg', gutAvg !== null ? gutAvg : '-');
+    updateElement('report-gut-max', gutMax !== null ? gutMax : '-');
+    updateElement('report-gut-min', gutMin !== null ? gutMin : '-');
+    updateElement('report-gut-rate', gutRate + '%');
+    updateElement('report-gut-urgent', gutUrgent);
+    
+    // Estatísticas 5W2H
+    updateElement('report-w5h2-total', w5h2Total);
+    updateElement('report-w5h2-rate', w5h2Rate + '%');
+    updateElement('report-w5h2-complete', w5h2Complete);
+    updateElement('report-w5h2-partial', w5h2Partial);
 }
 
 function updateReportTable() {
@@ -5984,7 +6753,7 @@ function updateReportTable() {
     if (!tbody) return;
     
     if (filteredDemands.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;">Nenhuma demanda encontrada</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem;">Nenhuma demanda encontrada</td></tr>';
         return;
     }
     
@@ -6007,12 +6776,26 @@ function updateReportTable() {
             'urgente': 'Urgente'
         };
         
+        // Verificar se usa GUT
+        const usesGut = demand.priorityStrategy === 'gut' && demand.gut;
+        const gutBadge = usesGut 
+            ? `<span class="tool-badge tool-badge-gut" title="Score GUT: ${demand.gut.score}">🧭 ${demand.gut.score}</span>`
+            : '<span class="tool-badge tool-badge-none">-</span>';
+        
+        // Verificar se usa 5W2H
+        const usesW5H2 = demand.w5h2 && demand.w5h2.enabled;
+        const w5h2Badge = usesW5H2 
+            ? `<span class="tool-badge tool-badge-w5h2" title="Análise 5W2H ativa">📊</span>`
+            : '<span class="tool-badge tool-badge-none">-</span>';
+        
         return `
             <tr>
                 <td>#${demand.id}</td>
                 <td>${escapeHtml(demand.title)}</td>
                 <td><span class="status-badge status-${demand.status}">${statusLabels[demand.status]}</span></td>
                 <td><span class="card-priority priority-${demand.priority}">${priorityLabels[demand.priority]}</span></td>
+                <td>${gutBadge}</td>
+                <td>${w5h2Badge}</td>
                 <td>${escapeHtml(demand.responsible)}</td>
                 <td>${formattedDate}</td>
                 <td>${daysOpen} dia(s)</td>
@@ -6559,6 +7342,819 @@ async function exportReportToPDF() {
     const fileName = `relatorio_qualidade_${new Date().toISOString().split('T')[0]}.pdf`;
     pdf.save(fileName);
 }
+
+// ========== RELATÓRIO DO CARD ==========
+
+// Variável global para armazenar o ID da demanda atual no relatório
+let currentReportDemandId = null;
+
+window.generateCardReportPDF = function(demandId) {
+    const demand = demands.find(d => d.id === demandId);
+    if (!demand) {
+        alert('Demanda não encontrada.');
+        return;
+    }
+    
+    currentReportDemandId = demandId;
+    openCardReportModal(demand);
+};
+
+function openCardReportModal(demand) {
+    const modal = document.getElementById('card-report-modal');
+    const content = document.getElementById('card-report-content');
+    
+    if (!modal || !content) return;
+    
+    // Renderizar conteúdo do relatório
+    renderCardReportContent(demand, content);
+    
+    // Abrir modal
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function renderCardReportContent(demand, container) {
+    const statusLabels = {
+        'pendente': 'Pendente',
+        'andamento': 'Em Andamento',
+        'revisao': 'Em Revisão',
+        'concluido': 'Concluído'
+    };
+    
+    const priorityLabels = {
+        'baixa': 'Baixa',
+        'media': 'Média',
+        'alta': 'Alta',
+        'urgente': 'Urgente'
+    };
+    
+    const createdDate = new Date(demand.createdAt);
+    const deadlineDate = demand.deadline ? new Date(demand.deadline) : null;
+    
+    let html = `
+        <div class="card-report">
+            <div class="report-header-info">
+                <div class="report-brand">
+                    <h2>QualixFlow</h2>
+                    <p>Onde dados se transformam em cuidado.</p>
+                </div>
+                <div class="report-title">
+                    <h1>Relatório da Demanda</h1>
+                </div>
+            </div>
+            
+            <div class="report-section">
+                <h3 class="report-section-title">📋 Informações Básicas</h3>
+                <div class="report-info-grid">
+                    <div class="report-info-item">
+                        <span class="report-label">ID:</span>
+                        <span class="report-value">#${demand.id}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Título:</span>
+                        <span class="report-value">${escapeHtml(demand.title)}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Status:</span>
+                        <span class="report-value status-badge status-${demand.status}">${statusLabels[demand.status] || demand.status}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Prioridade:</span>
+                        <span class="report-value priority-badge priority-${demand.priority}">${priorityLabels[demand.priority] || demand.priority}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Responsável:</span>
+                        <span class="report-value">${escapeHtml(demand.responsible || 'Não atribuído')}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Data de Criação:</span>
+                        <span class="report-value">${createdDate.toLocaleDateString('pt-BR')} ${createdDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    ${deadlineDate ? `
+                    <div class="report-info-item">
+                        <span class="report-label">Prazo:</span>
+                        <span class="report-value">${deadlineDate.toLocaleDateString('pt-BR')}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+    `;
+    
+    // Descrição
+    if (demand.description) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">📝 Descrição</h3>
+                <div class="report-text-content">${escapeHtml(demand.description).replace(/\n/g, '<br>')}</div>
+            </div>
+        `;
+    }
+    
+    // Matriz GUT
+    if (demand.priorityStrategy === 'gut' && demand.gut) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">🧭 Matriz GUT</h3>
+                <div class="report-info-grid">
+                    <div class="report-info-item">
+                        <span class="report-label">Gravidade:</span>
+                        <span class="report-value">${demand.gut.gravidade}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Urgência:</span>
+                        <span class="report-value">${demand.gut.urgencia}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Tendência:</span>
+                        <span class="report-value">${demand.gut.tendencia}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Score GUT:</span>
+                        <span class="report-value gut-score">${demand.gut.score}</span>
+                    </div>
+                    <div class="report-info-item">
+                        <span class="report-label">Prioridade Calculada:</span>
+                        <span class="report-value priority-badge priority-${demand.gut.priority}">${priorityLabels[demand.gut.priority] || demand.gut.priority}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Análise 5W2H
+    if (demand.w5h2 && demand.w5h2.enabled) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">📊 Análise 5W2H</h3>
+                <div class="report-w5h2-grid">
+        `;
+        
+        const w5h2Fields = [
+            { label: 'O quê? (What)', value: demand.w5h2.what, icon: '🎯' },
+            { label: 'Quem? (Who)', value: demand.w5h2.who, icon: '👤' },
+            { label: 'Quando? (When)', value: demand.w5h2.when, icon: '📅' },
+            { label: 'Onde? (Where)', value: demand.w5h2.where, icon: '📍' },
+            { label: 'Por quê? (Why)', value: demand.w5h2.why, icon: '❓' },
+            { label: 'Como? (How)', value: demand.w5h2.how, icon: '⚙️' },
+            { label: 'Quanto custa? (How Much)', value: demand.w5h2.howMuch, icon: '💰' }
+        ];
+        
+        w5h2Fields.forEach(field => {
+            if (field.value) {
+                html += `
+                    <div class="report-w5h2-item">
+                        <div class="w5h2-item-header">
+                            <span class="w5h2-icon">${field.icon}</span>
+                            <span class="w5h2-label">${field.label}</span>
+                        </div>
+                        <div class="w5h2-item-value">${escapeHtml(field.value).replace(/\n/g, '<br>')}</div>
+                    </div>
+                `;
+            }
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Colaboradores
+    if (demand.collaborators && demand.collaborators.length > 0) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">👥 Colaboradores</h3>
+                <div class="report-list">
+        `;
+        demand.collaborators.forEach(collab => {
+            html += `
+                <div class="report-list-item">
+                    <span class="list-icon">👤</span>
+                    <span class="list-content">${escapeHtml(collab.name)}${collab.email ? ` (${escapeHtml(collab.email)})` : ''}</span>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Tarefas
+    if (demand.tasks && demand.tasks.length > 0) {
+        const totalTasks = demand.tasks.length;
+        const completedTasks = demand.tasks.filter(t => t.completed).length;
+        const progress = Math.round((completedTasks / totalTasks) * 100);
+        
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">📋 Tarefas</h3>
+                <div class="report-tasks-summary">
+                    <span>Total: ${totalTasks} | Concluídas: ${completedTasks} | Progresso: ${progress}%</span>
+                </div>
+                <div class="report-list">
+        `;
+        demand.tasks.forEach(task => {
+            const taskStatus = task.completed ? '✓' : '○';
+            html += `
+                <div class="report-list-item">
+                    <span class="list-icon">${taskStatus}</span>
+                    <div class="list-content">
+                        <strong>${escapeHtml(task.title)}</strong>
+                        ${task.description ? `<div class="task-description">${escapeHtml(task.description).replace(/\n/g, '<br>')}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Chat (últimas mensagens)
+    if (demand.chat && demand.chat.length > 0) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">💬 Histórico de Conversas</h3>
+                <div class="report-chat-list">
+        `;
+        const recentMessages = demand.chat.slice(-10);
+        recentMessages.forEach(msg => {
+            const msgDate = new Date(msg.timestamp);
+            html += `
+                <div class="report-chat-item">
+                    <div class="chat-header">
+                        <strong>${escapeHtml(msg.author)}</strong>
+                        <span class="chat-date">${msgDate.toLocaleDateString('pt-BR')} ${msgDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div class="chat-message">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Histórico de Mudanças
+    if (demand.history && demand.history.length > 0) {
+        html += `
+            <div class="report-section">
+                <h3 class="report-section-title">📜 Histórico de Mudanças</h3>
+                <div class="report-history-list">
+        `;
+        demand.history.forEach(entry => {
+            const entryDate = new Date(entry.timestamp);
+            const actionLabels = {
+                'created': 'Criado',
+                'updated': 'Atualizado',
+                'status_changed': 'Status alterado',
+                'priority_changed': 'Prioridade alterada',
+                'deadline_set': 'Prazo definido',
+                'deadline_changed': 'Prazo alterado',
+                'deadline_removed': 'Prazo removido'
+            };
+            html += `
+                <div class="report-history-item">
+                    <div class="history-header">
+                        <strong>${escapeHtml(entry.user)}</strong>
+                        <span class="history-date">${entryDate.toLocaleDateString('pt-BR')} ${entryDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div class="history-action">${actionLabels[entry.action] || entry.action}</div>
+                    ${entry.details ? `
+                    <div class="history-details">
+                        ${Object.entries(entry.details).map(([key, value]) => `<span class="detail-item"><strong>${key}:</strong> ${value}</span>`).join(' ')}
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    html += `
+            <div class="report-footer">
+                <p>Gerado em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                <p>Qualishel - Escritório da Qualidade</p>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+function closeCardReportModal() {
+    const modal = document.getElementById('card-report-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    currentReportDemandId = null;
+}
+
+function printCardReport() {
+    const content = document.getElementById('card-report-content');
+    if (!content) return;
+    
+    // Criar uma nova janela para impressão
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Relatório da Demanda</title>
+            <style>
+                @media print {
+                    @page {
+                        margin: 1cm;
+                    }
+                }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    color: #1e293b;
+                    line-height: 1.6;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }
+                .card-report {
+                    background: white;
+                }
+                .report-header-info {
+                    border-bottom: 2px solid #2563eb;
+                    padding-bottom: 20px;
+                    margin-bottom: 30px;
+                }
+                .report-brand h2 {
+                    color: #2563eb;
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .report-brand p {
+                    color: #64748b;
+                    margin: 5px 0 0 0;
+                    font-size: 12px;
+                }
+                .report-title h1 {
+                    color: #1e293b;
+                    margin: 10px 0 0 0;
+                    font-size: 28px;
+                }
+                .report-section {
+                    margin-bottom: 30px;
+                    page-break-inside: avoid;
+                }
+                .report-section-title {
+                    color: #2563eb;
+                    font-size: 18px;
+                    margin-bottom: 15px;
+                    border-bottom: 1px solid #e2e8f0;
+                    padding-bottom: 8px;
+                }
+                .report-info-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 15px;
+                }
+                .report-info-item {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 5px;
+                }
+                .report-label {
+                    font-weight: 600;
+                    color: #64748b;
+                    font-size: 12px;
+                }
+                .report-value {
+                    color: #1e293b;
+                    font-size: 14px;
+                }
+                .report-text-content {
+                    color: #334155;
+                    line-height: 1.8;
+                    white-space: pre-wrap;
+                }
+                .report-list-item {
+                    display: flex;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                    padding: 10px;
+                    background: #f8fafc;
+                    border-radius: 6px;
+                }
+                .report-footer {
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 1px solid #e2e8f0;
+                    text-align: center;
+                    color: #64748b;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            ${content.innerHTML}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    
+    // Aguardar o conteúdo carregar e então imprimir
+    setTimeout(() => {
+        printWindow.print();
+    }, 250);
+}
+
+function generateCardReportPDFFromModal() {
+    if (!currentReportDemandId) return;
+    
+    if (typeof window.jspdf === 'undefined') {
+        alert('Biblioteca de PDF não carregada. Por favor, recarregue a página.');
+        return;
+    }
+    
+    const demand = demands.find(d => d.id === currentReportDemandId);
+    if (!demand) {
+        alert('Demanda não encontrada.');
+        return;
+    }
+    
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    
+    // Cores
+    const primaryColor = [37, 99, 235];
+    const textColor = [30, 41, 59];
+    const secondaryColor = [100, 116, 139];
+    const successColor = [16, 185, 129];
+    const warningColor = [245, 158, 11];
+    const dangerColor = [239, 68, 68];
+    
+    let yPosition = 20;
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 15;
+    const contentWidth = pageWidth - (margin * 2);
+    
+    // Função auxiliar para adicionar nova página se necessário
+    const checkNewPage = (requiredSpace = 10) => {
+        if (yPosition + requiredSpace > pageHeight - 20) {
+            pdf.addPage();
+            yPosition = 20;
+            return true;
+        }
+        return false;
+    };
+    
+    // Função auxiliar para adicionar texto com quebra de linha
+    const addTextWithWrap = (text, x, startY, maxWidth, fontSize = 10) => {
+        pdf.setFontSize(fontSize);
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        let currentY = startY;
+        lines.forEach((line, index) => {
+            if (currentY + (fontSize * 0.4) > pageHeight - 20) {
+                pdf.addPage();
+                currentY = 20;
+            }
+            pdf.text(line, x, currentY);
+            currentY += fontSize * 0.4;
+        });
+        return currentY;
+    };
+    
+    // Cabeçalho
+    pdf.setFillColor(...primaryColor);
+    pdf.rect(margin, yPosition, contentWidth, 20, 'F');
+    
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('QualixFlow', margin + 5, yPosition + 8);
+    
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Onde dados se transformam em cuidado.', margin + 5, yPosition + 13);
+    
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    const titleText = 'Relatório da Demanda';
+    const titleWidth = pdf.getTextWidth(titleText);
+    pdf.text(titleText, pageWidth - margin - titleWidth, yPosition + 12);
+    
+    yPosition += 25;
+    
+    // Informações Básicas
+    pdf.setTextColor(...textColor);
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Informações Básicas', margin, yPosition);
+    yPosition += 8;
+    
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    
+    // ID e Título
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('ID:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`#${demand.id}`, margin + 15, yPosition);
+    yPosition += 6;
+    
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Título:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    yPosition = addTextWithWrap(demand.title, margin + 20, yPosition, contentWidth - 20, 10);
+    yPosition += 4;
+    
+    // Status
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Status:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    const statusLabels = {
+        'pendente': 'Pendente',
+        'andamento': 'Em Andamento',
+        'revisao': 'Em Revisão',
+        'concluido': 'Concluído'
+    };
+    pdf.text(statusLabels[demand.status] || demand.status, margin + 20, yPosition);
+    yPosition += 6;
+    
+    // Prioridade
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Prioridade:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    const priorityLabels = {
+        'baixa': 'Baixa',
+        'media': 'Média',
+        'alta': 'Alta',
+        'urgente': 'Urgente'
+    };
+    pdf.text(priorityLabels[demand.priority] || demand.priority, margin + 30, yPosition);
+    yPosition += 6;
+    
+    // Responsável
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Responsável:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(demand.responsible || 'Não atribuído', margin + 35, yPosition);
+    yPosition += 6;
+    
+    // Data de Criação
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Data de Criação:', margin, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    const createdDate = new Date(demand.createdAt);
+    pdf.text(createdDate.toLocaleDateString('pt-BR') + ' ' + createdDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), margin + 40, yPosition);
+    yPosition += 6;
+    
+    // Prazo (se houver)
+    if (demand.deadline) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Prazo:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        const deadlineDate = new Date(demand.deadline);
+        pdf.text(deadlineDate.toLocaleDateString('pt-BR'), margin + 20, yPosition);
+        yPosition += 6;
+    }
+    
+    yPosition += 4;
+    checkNewPage();
+    
+    // Descrição
+    if (demand.description) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Descrição', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        yPosition = addTextWithWrap(demand.description, margin, yPosition, contentWidth, 10);
+        yPosition += 6;
+        checkNewPage();
+    }
+    
+    // Matriz GUT
+    if (demand.priorityStrategy === 'gut' && demand.gut) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Matriz GUT', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Gravidade:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(demand.gut.gravidade.toString(), margin + 30, yPosition);
+        yPosition += 6;
+        
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Urgência:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(demand.gut.urgencia.toString(), margin + 30, yPosition);
+        yPosition += 6;
+        
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Tendência:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(demand.gut.tendencia.toString(), margin + 30, yPosition);
+        yPosition += 6;
+        
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Score GUT:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(demand.gut.score.toString(), margin + 30, yPosition);
+        yPosition += 6;
+        
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Prioridade Calculada:', margin, yPosition);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(priorityLabels[demand.gut.priority] || demand.gut.priority, margin + 50, yPosition);
+        yPosition += 8;
+        checkNewPage();
+    }
+    
+    // Análise 5W2H
+    if (demand.w5h2 && demand.w5h2.enabled) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Análise 5W2H', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        const w5h2Fields = [
+            { label: 'O quê? (What)', value: demand.w5h2.what },
+            { label: 'Quem? (Who)', value: demand.w5h2.who },
+            { label: 'Quando? (When)', value: demand.w5h2.when },
+            { label: 'Onde? (Where)', value: demand.w5h2.where },
+            { label: 'Por quê? (Why)', value: demand.w5h2.why },
+            { label: 'Como? (How)', value: demand.w5h2.how },
+            { label: 'Quanto custa? (How Much)', value: demand.w5h2.howMuch }
+        ];
+        
+        w5h2Fields.forEach(field => {
+            if (field.value) {
+                pdf.setFont('helvetica', 'bold');
+                pdf.text(field.label + ':', margin, yPosition);
+                pdf.setFont('helvetica', 'normal');
+                yPosition = addTextWithWrap(field.value, margin + 5, yPosition + 4, contentWidth - 5, 9);
+                yPosition += 4;
+                checkNewPage(8);
+            }
+        });
+        
+        yPosition += 4;
+        checkNewPage();
+    }
+    
+    // Colaboradores
+    if (demand.collaborators && demand.collaborators.length > 0) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Colaboradores', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        demand.collaborators.forEach(collab => {
+            pdf.text(`• ${collab.name}${collab.email ? ' (' + collab.email + ')' : ''}`, margin + 5, yPosition);
+            yPosition += 5;
+            checkNewPage(5);
+        });
+        yPosition += 4;
+        checkNewPage();
+    }
+    
+    // Tarefas
+    if (demand.tasks && demand.tasks.length > 0) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Tarefas', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        
+        const totalTasks = demand.tasks.length;
+        const completedTasks = demand.tasks.filter(t => t.completed).length;
+        
+        pdf.text(`Total: ${totalTasks} | Concluídas: ${completedTasks} | Progresso: ${Math.round((completedTasks / totalTasks) * 100)}%`, margin, yPosition);
+        yPosition += 6;
+        
+        demand.tasks.forEach((task, index) => {
+            const taskStatus = task.completed ? '✓' : '○';
+            pdf.text(`${taskStatus} ${task.title}`, margin + 5, yPosition);
+            if (task.description) {
+                yPosition = addTextWithWrap(`  ${task.description}`, margin + 10, yPosition + 4, contentWidth - 10, 9);
+            } else {
+                yPosition += 5;
+            }
+            checkNewPage(8);
+        });
+        yPosition += 4;
+        checkNewPage();
+    }
+    
+    // Chat (últimas mensagens)
+    if (demand.chat && demand.chat.length > 0) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Histórico de Conversas', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        
+        // Mostrar últimas 10 mensagens
+        const recentMessages = demand.chat.slice(-10);
+        recentMessages.forEach(msg => {
+            const msgDate = new Date(msg.timestamp);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text(`${msg.author} - ${msgDate.toLocaleDateString('pt-BR')} ${msgDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}:`, margin + 5, yPosition);
+            pdf.setFont('helvetica', 'normal');
+            yPosition = addTextWithWrap(msg.text, margin + 5, yPosition + 4, contentWidth - 5, 9);
+            yPosition += 4;
+            checkNewPage(8);
+        });
+        yPosition += 4;
+        checkNewPage();
+    }
+    
+    // Histórico de Mudanças
+    if (demand.history && demand.history.length > 0) {
+        pdf.setFontSize(12);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Histórico de Mudanças', margin, yPosition);
+        yPosition += 6;
+        
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        
+        demand.history.forEach(entry => {
+            const entryDate = new Date(entry.timestamp);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text(`${entryDate.toLocaleDateString('pt-BR')} ${entryDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${entry.user}:`, margin + 5, yPosition);
+            pdf.setFont('helvetica', 'normal');
+            
+            const actionLabels = {
+                'created': 'Criado',
+                'updated': 'Atualizado',
+                'status_changed': 'Status alterado',
+                'priority_changed': 'Prioridade alterada',
+                'deadline_set': 'Prazo definido',
+                'deadline_changed': 'Prazo alterado',
+                'deadline_removed': 'Prazo removido'
+            };
+            
+            pdf.text(`  Ação: ${actionLabels[entry.action] || entry.action}`, margin + 5, yPosition + 4);
+            if (entry.details) {
+                const detailsText = Object.entries(entry.details).map(([key, value]) => `${key}: ${value}`).join(', ');
+                yPosition = addTextWithWrap(`  Detalhes: ${detailsText}`, margin + 5, yPosition + 8, contentWidth - 5, 8);
+            } else {
+                yPosition += 8;
+            }
+            checkNewPage(10);
+        });
+        yPosition += 4;
+    }
+    
+    // Rodapé em todas as páginas
+    const pageCount = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(...secondaryColor);
+        pdf.text(
+            `Página ${i} de ${pageCount} - Qualishel - Escritório da Qualidade`,
+            pageWidth / 2,
+            pageHeight - 10,
+            { align: 'center' }
+        );
+        
+        // Data de geração
+        const now = new Date();
+        pdf.text(
+            `Gerado em: ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+            pageWidth / 2,
+            pageHeight - 5,
+            { align: 'center' }
+        );
+    }
+    
+    // Download
+    const fileName = `demanda_${demand.id}_${demand.title.substring(0, 20).replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fileName);
+};
 
 // ========== ARQUIVOS ==========
 
