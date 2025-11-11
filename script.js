@@ -1743,7 +1743,7 @@ function createCard(demand) {
                 ${demand.description ? `
                     <div class="summary-banner-section">
                         <div class="summary-banner-label">📝 Descrição</div>
-                        <div class="summary-banner-description">${escapeHtml(demand.description)}</div>
+                        <div class="summary-banner-description">${convertUrlsToLinks(demand.description)}</div>
                     </div>
                 ` : ''}
                 ${deadlineBannerHtml}
@@ -1790,8 +1790,8 @@ function createCard(demand) {
             <div class="card-bar-content">
                 ${priorityStackHtml}
                 <div class="card-bar-main">
-                    <div class="card-bar-title">${escapeHtml(demand.title)}</div>
-                    ${deadlineIconHtml}
+                <div class="card-bar-title">${escapeHtml(demand.title)}</div>
+                ${deadlineIconHtml}
                 </div>
             </div>
             ${summaryBannerHtml}
@@ -1811,14 +1811,14 @@ function createCard(demand) {
                     📦
                 </button>
             </div>
-            ${demand.description ? `<div class="card-description">${escapeHtml(demand.description)}</div>` : ''}
+            ${demand.description ? `<div class="card-description">${convertUrlsToLinks(demand.description)}</div>` : ''}
             ${demand.w5h2 && demand.w5h2.enabled ? `
                 <div class="card-w5h2">
                     <div class="w5h2-card-header" onclick="openW5H2ViewModal(${demand.id})">
                         <span class="w5h2-card-icon">📊</span>
                         <span class="w5h2-card-title">Análise 5W2H</span>
                         <span class="w5h2-card-toggle">👁️</span>
-                    </div>
+            </div>
                     <div class="w5h2-card-content" id="w5h2-content-${demand.id}" style="max-height: 0; opacity: 0; padding: 0 1rem;">
                         <div class="w5h2-card-grid">
                             ${demand.w5h2.what ? `
@@ -5418,7 +5418,7 @@ async function notifyCollaboratorsAboutUpdate(demand, updateType, updateDetails 
                 const gutScoreText = updateDetails.gutScore ? ` (Score GUT ${updateDetails.gutScore})` : '';
                 updateMessage = `A prioridade da demanda "${demand.title}" foi recalculada pela Matriz GUT${gutScoreText}, resultando em "${updateDetails.newPriority || demand.priority}".`;
             } else {
-                updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
+            updateMessage = `A prioridade da demanda "${demand.title}" foi alterada para "${updateDetails.newPriority || demand.priority}".`;
             }
             break;
         default:
@@ -5732,6 +5732,23 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Função para converter URLs em links clicáveis
+function convertUrlsToLinks(text) {
+    if (!text) return '';
+    // Primeiro escapa o HTML para segurança
+    const escaped = escapeHtml(text);
+    // Regex para detectar URLs (http, https, www, etc)
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*)/g;
+    return escaped.replace(urlRegex, (url) => {
+        // Garantir que URLs sem protocolo tenham https://
+        let href = url;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            href = 'https://' + url;
+        }
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: underline; transition: color 0.2s;">${url}</a>`;
+    });
 }
 
 // ========== DASHBOARD ==========
@@ -7500,7 +7517,7 @@ function renderCardReportContent(demand, container) {
         html += `
             <div class="report-section">
                 <h3 class="report-section-title">📝 Descrição</h3>
-                <div class="report-text-content">${escapeHtml(demand.description).replace(/\n/g, '<br>')}</div>
+                <div class="report-text-content">${convertUrlsToLinks(demand.description).replace(/\n/g, '<br>')}</div>
             </div>
         `;
     }
@@ -7615,7 +7632,7 @@ function renderCardReportContent(demand, container) {
                 <div class="report-list-item">
                     <span class="list-icon">${taskStatus}</span>
                     <div class="list-content">
-                        <strong>${escapeHtml(task.title)}</strong>
+                        <strong>${escapeHtml(task.text || task.title || 'Tarefa sem nome')}</strong>
                         ${task.description ? `<div class="task-description">${escapeHtml(task.description).replace(/\n/g, '<br>')}</div>` : ''}
                     </div>
                 </div>
@@ -8108,7 +8125,7 @@ function generateCardReportPDFFromModal() {
         
         demand.tasks.forEach((task, index) => {
             const taskStatus = task.completed ? '✓' : '○';
-            pdf.text(`${taskStatus} ${task.title}`, margin + 5, yPosition);
+            pdf.text(`${taskStatus} ${task.text || task.title || 'Tarefa sem nome'}`, margin + 5, yPosition);
             if (task.description) {
                 yPosition = addTextWithWrap(`  ${task.description}`, margin + 10, yPosition + 4, contentWidth - 10, 9);
             } else {
