@@ -546,14 +546,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const expectedUserId = currentUser.toLowerCase().replace(/\s+/g, '_');
         console.log(`👤 Carregando dados para usuário: ${currentUser} (userId: ${expectedUserId})`);
         
-        // Limpar dados da memória antes de carregar (garantir isolamento)
-        panels = [];
-        demands = [];
-        currentPanelId = null;
-        panelIdCounter = 1;
-        demandIdCounter = 1;
-        availablePeople = [];
-        isUpdatingFromRealtime = false;
+        // CRÍTICO: Fazer backup dos dados atuais antes de qualquer limpeza
+        const backupPanels = [...panels];
+        const backupDemands = [...demands];
+        const backupCurrentPanelId = currentPanelId;
+        const backupPanelCounter = panelIdCounter;
+        const backupDemandCounter = demandIdCounter;
+        
+        console.log(`💾 Backup criado - Painéis: ${backupPanels.length}, Demandas: ${backupDemands.length}`);
         
         // Limpar APENAS chaves antigas (sem userId) do localStorage - NUNCA remover dados do usuário atual
         console.log('🧹 Verificando chaves antigas do localStorage (sem userId)...');
@@ -580,7 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
         
-        // Limpar interface visual antes de carregar
+        // Limpar interface visual antes de carregar (mas manter dados na memória até confirmar carregamento)
         const columns = ['pendente', 'andamento', 'revisao', 'concluido'];
         columns.forEach(status => {
             const column = document.getElementById(`column-${status}`);
@@ -589,8 +589,54 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
         
-        await loadPanels();
-        await loadDemands();
+        // Tentar carregar dados - se falhar, restaurar backup
+        try {
+            await loadPanels();
+            await loadDemands();
+            
+            // Verificar se os dados foram carregados com sucesso
+            if (panels.length === 0 && backupPanels.length > 0) {
+                console.warn('⚠️ Nenhum painel carregado, mas havia backup. Restaurando backup...');
+                panels = backupPanels;
+                panelIdCounter = backupPanelCounter;
+                currentPanelId = backupCurrentPanelId;
+            }
+            
+            if (demands.length === 0 && backupDemands.length > 0) {
+                console.warn('⚠️ Nenhuma demanda carregada, mas havia backup. Restaurando backup...');
+                demands = backupDemands;
+                demandIdCounter = backupDemandCounter;
+            }
+            
+            // Se ainda não houver dados após tentar carregar, limpar memória apenas agora
+            if (panels.length === 0 && demands.length === 0) {
+                console.log('ℹ️ Nenhum dado encontrado. Limpando memória...');
+                panels = [];
+                demands = [];
+                currentPanelId = null;
+                panelIdCounter = 1;
+                demandIdCounter = 1;
+                availablePeople = [];
+                isUpdatingFromRealtime = false;
+            } else {
+                // Dados carregados com sucesso, limpar apenas contadores se necessário
+                if (panels.length > 0 && panelIdCounter < Math.max(...panels.map(p => p.id)) + 1) {
+                    panelIdCounter = Math.max(...panels.map(p => p.id)) + 1;
+                }
+                if (demands.length > 0 && demandIdCounter < Math.max(...demands.map(d => d.id)) + 1) {
+                    demandIdCounter = Math.max(...demands.map(d => d.id)) + 1;
+                }
+            }
+        } catch (error) {
+            console.error('❌ Erro ao carregar dados:', error);
+            console.log('🔄 Restaurando backup devido a erro...');
+            // Restaurar backup em caso de erro
+            panels = backupPanels;
+            demands = backupDemands;
+            currentPanelId = backupCurrentPanelId;
+            panelIdCounter = backupPanelCounter;
+            demandIdCounter = backupDemandCounter;
+        }
         
         console.log(`📊 Dados carregados - Painéis: ${panels.length}, Demandas: ${demands.length}`);
         // Corrigir cards sem panelId válido após carregar painéis
