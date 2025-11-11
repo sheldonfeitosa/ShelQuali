@@ -1003,6 +1003,54 @@
                     </div>
                 </div>
                 <div class="form-group">
+                    <div class="pdsa-section">
+                        <div class="pdsa-header">
+                            <label class="pdsa-toggle-label" for="enable-pdsa">
+                                <input type="checkbox" id="enable-pdsa" class="pdsa-toggle">
+                                <div>
+                                    <span class="pdsa-title">
+                                        <span class="pdsa-icon">🔄</span>
+                                        Ferramenta PDSA
+                                    </span>
+                                    <span class="pdsa-subtitle">Ciclo de Melhoria Contínua (Plan-Do-Study-Act)</span>
+                                </div>
+                            </label>
+                        </div>
+                        <div id="pdsa-panel" class="pdsa-panel" hidden>
+                            <div class="pdsa-grid">
+                                <div class="pdsa-item" data-field="plan">
+                                    <div class="pdsa-item-header">
+                                        <span class="pdsa-item-icon">📋</span>
+                                        <span class="pdsa-item-title">Plan (Planejar)</span>
+                                    </div>
+                                    <textarea id="pdsa-plan" class="pdsa-input" rows="3" placeholder="Descreva o objetivo, a mudança sendo testada, as previsões e os passos de ação necessários. Planeje a coleta de dados..."></textarea>
+                                </div>
+                                <div class="pdsa-item" data-field="do">
+                                    <div class="pdsa-item-header">
+                                        <span class="pdsa-item-icon">⚡</span>
+                                        <span class="pdsa-item-title">Do (Fazer)</span>
+                                    </div>
+                                    <textarea id="pdsa-do" class="pdsa-input" rows="3" placeholder="Execute o teste. Descreva o que aconteceu. Colete os dados..."></textarea>
+                                </div>
+                                <div class="pdsa-item" data-field="study">
+                                    <div class="pdsa-item-header">
+                                        <span class="pdsa-item-icon">🔍</span>
+                                        <span class="pdsa-item-title">Study (Estudar)</span>
+                                    </div>
+                                    <textarea id="pdsa-study" class="pdsa-input" rows="3" placeholder="Analise os dados. Compare os resultados com as previsões. Resuma o que você aprendeu..."></textarea>
+                                </div>
+                                <div class="pdsa-item" data-field="act">
+                                    <div class="pdsa-item-header">
+                                        <span class="pdsa-item-icon">✅</span>
+                                        <span class="pdsa-item-title">Act (Agir)</span>
+                                    </div>
+                                    <textarea id="pdsa-act" class="pdsa-input" rows="3" placeholder="Decida o que fazer a seguir. Faça mudanças e inicie outro ciclo..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="demand-priority">Prioridade</label>
                     <div class="priority-control">
                         <select id="demand-priority" data-default="media">
@@ -1244,6 +1292,19 @@
             </div>
             <div class="modal-body" id="w5h2-view-content">
                 <!-- Conteúdo do 5W2H será inserido aqui -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Visualização do PDSA -->
+    <div id="pdsa-view-modal" class="modal">
+        <div class="modal-content" style="max-width: 1000px; max-height: 95vh;">
+            <div class="modal-header">
+                <h3>🔄 Ciclo PDSA</h3>
+                <button class="modal-close" id="close-pdsa-view-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="pdsa-view-content">
+                <!-- Conteúdo do PDSA será inserido aqui -->
             </div>
         </div>
     </div>

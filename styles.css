@@ -6091,6 +6091,573 @@ body {
 }
 
 /* ============================================
+   PDSA - FERRAMENTA DE QUALIDADE PREMIUM
+   ============================================ */
+
+/* Seção PDSA no Formulário */
+.pdsa-section {
+    margin-top: 0.5rem;
+}
+
+.pdsa-header {
+    margin-bottom: 0.75rem;
+}
+
+.pdsa-toggle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.pdsa-toggle {
+    display: none;
+}
+
+.pdsa-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.95);
+    transition: var(--transition-base);
+}
+
+.pdsa-icon {
+    font-size: 1.1rem;
+    filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.3));
+}
+
+.pdsa-subtitle {
+    font-size: 0.8rem;
+    color: rgba(226, 232, 240, 0.7);
+    font-weight: 400;
+    margin-left: 1.75rem;
+}
+
+.pdsa-toggle:checked ~ .pdsa-title,
+.pdsa-toggle:checked + .pdsa-title {
+    color: rgba(96, 165, 250, 0.95);
+}
+
+.pdsa-panel {
+    margin-top: 1rem;
+    padding: 1.5rem;
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    background: linear-gradient(135deg, rgba(30, 64, 175, 0.4), rgba(15, 23, 42, 0.9));
+    box-shadow: var(--shadow-lg), 0 20px 50px rgba(30, 64, 175, 0.2);
+    display: none;
+    flex-direction: column;
+    gap: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pdsa-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top left, rgba(96, 165, 250, 0.25), transparent 60%);
+    pointer-events: none;
+}
+
+.pdsa-panel.is-open {
+    display: flex;
+    opacity: 1;
+    transform: translateY(0);
+    animation: pdsaPanelIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes pdsaPanelIn {
+    from {
+        opacity: 0;
+        transform: translateY(-15px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.pdsa-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.pdsa-item {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: var(--radius-lg);
+    padding: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: pdsaItemFadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+.pdsa-item:nth-child(1) { animation-delay: 0.05s; }
+.pdsa-item:nth-child(2) { animation-delay: 0.1s; }
+.pdsa-item:nth-child(3) { animation-delay: 0.15s; }
+.pdsa-item:nth-child(4) { animation-delay: 0.2s; }
+
+@keyframes pdsaItemFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.pdsa-item::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent 70%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.pdsa-item:hover {
+    background: rgba(15, 23, 42, 0.75);
+    border-color: rgba(37, 99, 235, 0.4);
+    box-shadow: var(--shadow-md), 0 8px 24px rgba(37, 99, 235, 0.15);
+    transform: translateY(-3px);
+}
+
+.pdsa-item:hover::after {
+    opacity: 1;
+}
+
+.pdsa-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    position: relative;
+    z-index: 1;
+}
+
+.pdsa-item-icon {
+    font-size: 1.25rem;
+    filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.3));
+    animation: pdsaIconPulse 2s ease-in-out infinite;
+}
+
+@keyframes pdsaIconPulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.3));
+    }
+    50% {
+        transform: scale(1.1);
+        filter: drop-shadow(0 2px 8px rgba(37, 99, 235, 0.5));
+    }
+}
+
+.pdsa-item-title {
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+}
+
+.pdsa-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    font-family: inherit;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--text-primary);
+    font-weight: 500;
+    resize: vertical;
+    position: relative;
+    z-index: 1;
+}
+
+.pdsa-input::placeholder {
+    color: rgba(148, 163, 184, 0.5);
+    font-weight: 400;
+}
+
+.pdsa-input:focus {
+    outline: none;
+    border-color: rgba(37, 99, 235, 0.6);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2), var(--shadow-glow-blue);
+    background: rgba(15, 23, 42, 0.7);
+    transform: translateY(-1px);
+}
+
+/* PDSA no Card */
+.card-pdsa {
+    margin-top: 1.25rem;
+    background: linear-gradient(135deg, rgba(30, 64, 175, 0.15), rgba(15, 23, 42, 0.4));
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: pdsaCardFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes pdsaCardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card-pdsa:hover {
+    border-color: rgba(37, 99, 235, 0.4);
+    box-shadow: var(--shadow-md), 0 8px 24px rgba(37, 99, 235, 0.15);
+}
+
+.pdsa-card-header {
+    padding: 0.875rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), transparent);
+}
+
+.pdsa-card-header:hover {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), transparent);
+}
+
+.pdsa-card-icon {
+    font-size: 1.1rem;
+    filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.3));
+}
+
+.pdsa-card-title {
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: rgba(96, 165, 250, 0.95);
+    letter-spacing: 0.02em;
+    flex: 1;
+    margin-left: 0.5rem;
+}
+
+.pdsa-card-toggle {
+    font-size: 0.875rem;
+    opacity: 0.7;
+    transition: all 0.3s ease;
+}
+
+.pdsa-card-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pdsa-card-content[style*="max-height: 0"] {
+    padding: 0 1rem !important;
+}
+
+.pdsa-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.875rem;
+}
+
+.pdsa-card-item {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: var(--radius-md);
+    padding: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: pdsaCardItemFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+.pdsa-card-item:nth-child(1) { animation-delay: 0.05s; }
+.pdsa-card-item:nth-child(2) { animation-delay: 0.1s; }
+.pdsa-card-item:nth-child(3) { animation-delay: 0.15s; }
+.pdsa-card-item:nth-child(4) { animation-delay: 0.2s; }
+
+@keyframes pdsaCardItemFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.pdsa-card-item:hover {
+    background: rgba(15, 23, 42, 0.65);
+    border-color: rgba(37, 99, 235, 0.35);
+    box-shadow: var(--shadow-sm), 0 4px 12px rgba(37, 99, 235, 0.1);
+    transform: translateY(-2px);
+}
+
+.pdsa-card-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pdsa-card-item-icon {
+    font-size: 1rem;
+    filter: drop-shadow(0 1px 3px rgba(37, 99, 235, 0.3));
+}
+
+.pdsa-card-item-label {
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: rgba(96, 165, 250, 0.9);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.pdsa-card-item-value {
+    font-size: 0.85rem;
+    color: rgba(226, 232, 240, 0.85);
+    line-height: 1.5;
+    font-weight: 400;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+/* Modal de Visualização PDSA - Diagrama */
+.pdsa-view-container {
+    padding: 1rem;
+}
+
+.pdsa-view-header {
+    margin-bottom: 2rem;
+}
+
+.pdsa-view-brand h2 {
+    color: var(--primary-500);
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.pdsa-view-brand p {
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.pdsa-diagram-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    margin: 2rem 0;
+}
+
+.pdsa-diagram {
+    width: 100%;
+    max-width: 800px;
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0;
+    position: relative;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+}
+
+.pdsa-quadrant {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    border: 3px solid;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.pdsa-quadrant:hover {
+    transform: scale(1.02);
+    z-index: 10;
+    box-shadow: var(--shadow-lg);
+}
+
+.pdsa-top-right {
+    border-top-right-radius: var(--radius-xl);
+    border-top: none;
+    border-right: none;
+}
+
+.pdsa-bottom-right {
+    border-bottom-right-radius: var(--radius-xl);
+    border-bottom: none;
+    border-right: none;
+}
+
+.pdsa-bottom-left {
+    border-bottom-left-radius: var(--radius-xl);
+    border-bottom: none;
+    border-left: none;
+}
+
+.pdsa-top-left {
+    border-top-left-radius: var(--radius-xl);
+    border-top: none;
+    border-left: none;
+}
+
+.pdsa-quadrant-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.pdsa-quadrant-icon {
+    font-size: 1.5rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.pdsa-quadrant-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    margin: 0;
+}
+
+.pdsa-quadrant-description {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+}
+
+.pdsa-quadrant-content {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    padding-top: 0.5rem;
+}
+
+.pdsa-quadrant-value {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.6;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.pdsa-quadrant-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+    min-height: 60px;
+}
+
+.pdsa-quadrant-empty .empty-icon {
+    font-size: 1.5rem;
+    opacity: 0.5;
+}
+
+.pdsa-quadrant-empty .empty-text {
+    font-size: 0.85rem;
+}
+
+.pdsa-view-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    margin-top: 2rem;
+}
+
+.summary-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.summary-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.summary-value {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.summary-value.complete {
+    color: var(--qualiflow-green);
+}
+
+.summary-value.partial {
+    color: var(--qualiflow-blue);
+}
+
+/* Responsividade PDSA */
+@media (max-width: 768px) {
+    .pdsa-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .pdsa-card-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .pdsa-diagram {
+        max-width: 100%;
+    }
+    
+    .pdsa-quadrant {
+        padding: 1rem;
+    }
+    
+    .pdsa-quadrant-title {
+        font-size: 1rem;
+    }
+}
+
+/* ============================================
    ESTILOS DASHBOARD E RELATÓRIO - GUT E 5W2H
    ============================================ */
 

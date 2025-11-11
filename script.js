@@ -1116,6 +1116,14 @@ function setupEventListeners() {
             toggleW5H2Panel(e.target.checked);
         });
     }
+    
+    // PDSA Toggle
+    const enablePDSACheckbox = document.getElementById('enable-pdsa');
+    if (enablePDSACheckbox) {
+        enablePDSACheckbox.addEventListener('change', (e) => {
+            togglePDSAPanel(e.target.checked);
+        });
+    }
 
     // Modal de Prazo
     closeDeadlineModalBtn.addEventListener('click', () => closeDeadlineModal());
@@ -1179,13 +1187,26 @@ function setupEventListeners() {
     // Modal de Visualização do 5W2H
     const closeW5H2ViewModalBtn = document.getElementById('close-w5h2-view-modal');
     const w5h2ViewModal = document.getElementById('w5h2-view-modal');
-    
+
     if (closeW5H2ViewModalBtn) {
         closeW5H2ViewModalBtn.addEventListener('click', closeW5H2ViewModal);
     }
     if (w5h2ViewModal) {
         w5h2ViewModal.addEventListener('click', (e) => {
             if (e.target === w5h2ViewModal) closeW5H2ViewModal();
+        });
+    }
+    
+    // Modal de Visualização do PDSA
+    const closePDSViewModalBtn = document.getElementById('close-pdsa-view-modal');
+    const pdsaViewModal = document.getElementById('pdsa-view-modal');
+
+    if (closePDSViewModalBtn) {
+        closePDSViewModalBtn.addEventListener('click', closePDSViewModal);
+    }
+    if (pdsaViewModal) {
+        pdsaViewModal.addEventListener('click', (e) => {
+            if (e.target === pdsaViewModal) closePDSViewModal();
         });
     }
 
@@ -1353,6 +1374,13 @@ function closeModal() {
         toggleW5H2Panel(false);
     }
     
+    // Limpar campos PDSA
+    const enablePDSACheckbox = document.getElementById('enable-pdsa');
+    if (enablePDSACheckbox) {
+        enablePDSACheckbox.checked = false;
+        togglePDSAPanel(false);
+    }
+    
     document.querySelector('.modal-header h3').textContent = 'Nova Demanda';
     // Restaurar texto do botão para criar nova demanda
     const submitBtn = document.getElementById('submit-demand-btn');
@@ -1366,6 +1394,20 @@ function closeModal() {
 // Funções 5W2H
 function toggleW5H2Panel(show) {
     const panel = document.getElementById('w5h2-panel');
+    if (!panel) return;
+    
+    if (show) {
+        panel.classList.add('is-open');
+        panel.removeAttribute('hidden');
+    } else {
+        panel.classList.remove('is-open');
+        panel.setAttribute('hidden', 'true');
+    }
+}
+
+// Funções PDSA
+function togglePDSAPanel(show) {
+    const panel = document.getElementById('pdsa-panel');
     if (!panel) return;
     
     if (show) {
@@ -1490,6 +1532,133 @@ function closeW5H2ViewModal() {
     }
 }
 
+// Abrir modal de visualização do PDSA
+window.openPDSViewModal = function(demandId) {
+    const demand = demands.find(d => d.id === demandId);
+    if (!demand || !demand.pdsa || !demand.pdsa.enabled) {
+        return;
+    }
+    
+    const modal = document.getElementById('pdsa-view-modal');
+    const content = document.getElementById('pdsa-view-content');
+    
+    if (!modal || !content) return;
+    
+    // Renderizar conteúdo do PDSA
+    renderPDSViewContent(demand.pdsa, content);
+    
+    // Abrir modal
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+};
+
+function renderPDSViewContent(pdsa, container) {
+    const pdsaFields = [
+        { 
+            label: 'Plan (Planejar)', 
+            value: pdsa.plan, 
+            icon: '📋', 
+            description: 'Descreva o objetivo, a mudança sendo testada, as previsões e os passos de ação necessários. Planeje a coleta de dados.',
+            color: '#2563eb' // Azul escuro
+        },
+        { 
+            label: 'Do (Fazer)', 
+            value: pdsa.do, 
+            icon: '⚡', 
+            description: 'Execute o teste. Descreva o que aconteceu. Colete os dados.',
+            color: '#1e40af' // Azul mais escuro
+        },
+        { 
+            label: 'Study (Estudar)', 
+            value: pdsa.study, 
+            icon: '🔍', 
+            description: 'Analise os dados. Compare os resultados com as previsões. Resuma o que você aprendeu.',
+            color: '#3b82f6' // Azul médio
+        },
+        { 
+            label: 'Act (Agir)', 
+            value: pdsa.act, 
+            icon: '✅', 
+            description: 'Decida o que fazer a seguir. Faça mudanças e inicie outro ciclo.',
+            color: '#6b7280' // Cinza
+        }
+    ];
+    
+    let html = `
+        <div class="pdsa-view-container">
+            <div class="pdsa-view-header">
+                <div class="pdsa-view-brand">
+                    <h2>🔄 Ciclo PDSA</h2>
+                    <p>Plan-Do-Study-Act: Método iterativo de resolução de problemas e melhoria contínua</p>
+                </div>
+            </div>
+            
+            <div class="pdsa-diagram-container">
+                <div class="pdsa-diagram">
+    `;
+    
+    // Criar os 4 quadrantes do diagrama PDSA
+    // Ordem: Plan (top-right), Do (bottom-right), Study (bottom-left), Act (top-left)
+    const quadrantOrder = ['plan', 'do', 'study', 'act'];
+    const positions = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
+    
+    quadrantOrder.forEach((fieldKey, index) => {
+        const field = pdsaFields.find(f => f.label.toLowerCase().includes(fieldKey));
+        const position = positions[index];
+        
+        html += `
+            <div class="pdsa-quadrant pdsa-${position}" style="background: ${field.color}20; border-color: ${field.color};">
+                <div class="pdsa-quadrant-header">
+                    <span class="pdsa-quadrant-icon">${field.icon}</span>
+                    <h3 class="pdsa-quadrant-title">${field.label}</h3>
+                </div>
+                <div class="pdsa-quadrant-description">
+                    ${field.description}
+                </div>
+                <div class="pdsa-quadrant-content">
+                    ${field.value ? `
+                        <div class="pdsa-quadrant-value">${escapeHtml(field.value).replace(/\n/g, '<br>')}</div>
+                    ` : `
+                        <div class="pdsa-quadrant-empty">
+                            <span class="empty-icon">—</span>
+                            <span class="empty-text">Não preenchido</span>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `
+                </div>
+            </div>
+            
+            <div class="pdsa-view-summary">
+                <div class="summary-item">
+                    <span class="summary-label">Etapas preenchidas:</span>
+                    <span class="summary-value">${pdsaFields.filter(f => f.value).length} de ${pdsaFields.length}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Status:</span>
+                    <span class="summary-value ${pdsaFields.filter(f => f.value).length === pdsaFields.length ? 'complete' : 'partial'}">
+                        ${pdsaFields.filter(f => f.value).length === pdsaFields.length ? '✓ Completo' : '○ Parcial'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+function closePDSViewModal() {
+    const modal = document.getElementById('pdsa-view-modal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
 // Navegação
 function switchPage(pageName) {
     // Remover active de todas as páginas e links
@@ -1542,6 +1711,15 @@ function handleFormSubmit(e) {
         how: document.getElementById('w5h2-how')?.value || '',
         howMuch: document.getElementById('w5h2-howmuch')?.value || ''
     };
+    
+    // Coletar dados PDSA
+    const pdsaData = {
+        enabled: document.getElementById('enable-pdsa')?.checked || false,
+        plan: document.getElementById('pdsa-plan')?.value || '',
+        do: document.getElementById('pdsa-do')?.value || '',
+        study: document.getElementById('pdsa-study')?.value || '',
+        act: document.getElementById('pdsa-act')?.value || ''
+    };
 
     const demand = {
         id: demandIdCounter++,
@@ -1549,6 +1727,7 @@ function handleFormSubmit(e) {
         title: document.getElementById('demand-title').value,
         description: document.getElementById('demand-description').value,
         w5h2: w5h2Data.enabled ? w5h2Data : null,
+        pdsa: pdsaData.enabled ? pdsaData : null,
         priority: priorityData.priority,
         priorityStrategy: priorityData.priorityStrategy,
         gut: priorityData.gut,
@@ -1972,6 +2151,55 @@ function createCard(demand) {
                     </div>
                 </div>
             ` : ''}
+            ${demand.pdsa && demand.pdsa.enabled ? `
+                <div class="card-pdsa">
+                    <div class="pdsa-card-header" onclick="openPDSViewModal(${demand.id})">
+                        <span class="pdsa-card-icon">🔄</span>
+                        <span class="pdsa-card-title">Ciclo PDSA</span>
+                        <span class="pdsa-card-toggle">👁️</span>
+                    </div>
+                    <div class="pdsa-card-content" id="pdsa-content-${demand.id}" style="max-height: 0; opacity: 0; padding: 0 1rem;">
+                        <div class="pdsa-card-grid">
+                            ${demand.pdsa.plan ? `
+                                <div class="pdsa-card-item" data-field="plan">
+                                    <div class="pdsa-card-item-header">
+                                        <span class="pdsa-card-item-icon">📋</span>
+                                        <span class="pdsa-card-item-label">Plan</span>
+                                    </div>
+                                    <div class="pdsa-card-item-value">${escapeHtml(demand.pdsa.plan)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.pdsa.do ? `
+                                <div class="pdsa-card-item" data-field="do">
+                                    <div class="pdsa-card-item-header">
+                                        <span class="pdsa-card-item-icon">⚡</span>
+                                        <span class="pdsa-card-item-label">Do</span>
+                                    </div>
+                                    <div class="pdsa-card-item-value">${escapeHtml(demand.pdsa.do)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.pdsa.study ? `
+                                <div class="pdsa-card-item" data-field="study">
+                                    <div class="pdsa-card-item-header">
+                                        <span class="pdsa-card-item-icon">🔍</span>
+                                        <span class="pdsa-card-item-label">Study</span>
+                                    </div>
+                                    <div class="pdsa-card-item-value">${escapeHtml(demand.pdsa.study)}</div>
+                                </div>
+                            ` : ''}
+                            ${demand.pdsa.act ? `
+                                <div class="pdsa-card-item" data-field="act">
+                                    <div class="pdsa-card-item-header">
+                                        <span class="pdsa-card-item-icon">✅</span>
+                                        <span class="pdsa-card-item-label">Act</span>
+                                    </div>
+                                    <div class="pdsa-card-item-value">${escapeHtml(demand.pdsa.act)}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
             ${deadlineHtml}
             ${progressHtml}
             ${collaboratorsHtml}
@@ -2223,6 +2451,25 @@ function editDemand(id) {
         if (enableCheckbox) {
             enableCheckbox.checked = false;
             toggleW5H2Panel(false);
+        }
+    }
+    
+    // Preencher dados PDSA
+    if (demand.pdsa && demand.pdsa.enabled) {
+        const enablePDSACheckbox = document.getElementById('enable-pdsa');
+        if (enablePDSACheckbox) {
+            enablePDSACheckbox.checked = true;
+            togglePDSAPanel(true);
+        }
+        if (document.getElementById('pdsa-plan')) document.getElementById('pdsa-plan').value = demand.pdsa.plan || '';
+        if (document.getElementById('pdsa-do')) document.getElementById('pdsa-do').value = demand.pdsa.do || '';
+        if (document.getElementById('pdsa-study')) document.getElementById('pdsa-study').value = demand.pdsa.study || '';
+        if (document.getElementById('pdsa-act')) document.getElementById('pdsa-act').value = demand.pdsa.act || '';
+    } else {
+        const enablePDSACheckbox = document.getElementById('enable-pdsa');
+        if (enablePDSACheckbox) {
+            enablePDSACheckbox.checked = false;
+            togglePDSAPanel(false);
         }
     }
 
