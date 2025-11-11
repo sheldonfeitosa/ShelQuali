@@ -428,7 +428,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
         // Remover APENAS dados do usuário ANTERIOR (não do atual) e chaves antigas (sem userId)
+        // CRÍTICO: NUNCA remover credenciais (qualishel_users, qualishel_authenticated, qualishel_current_user)
         allKeys.forEach(key => {
+            // PROTEÇÃO ABSOLUTA: Nunca remover credenciais, independente de qualquer condição
+            if (key === 'qualishel_users' || key === 'qualishel_authenticated' || key === 'qualishel_current_user') {
+                console.log(`🔒 PROTEÇÃO ABSOLUTA: Credencial protegida - ${key}`);
+                return; // Pular esta chave completamente
+            }
+            
             if (key.startsWith('qualishel-') && !keysToKeep.includes(key)) {
                 // Verificar se é uma chave do usuário anterior (para remover) ou chave antiga (sem userId)
                 const isPreviousUserKey = key.includes(`-${previousUserId}`) || key.includes(`-${previousUserId}-`);
@@ -556,6 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(`💾 Backup criado - Painéis: ${backupPanels.length}, Demandas: ${backupDemands.length}`);
         
         // Limpar APENAS chaves antigas (sem userId) do localStorage - NUNCA remover dados do usuário atual
+        // CRÍTICO: NUNCA remover credenciais (qualishel_users, qualishel_authenticated, qualishel_current_user)
         console.log('🧹 Verificando chaves antigas do localStorage (sem userId)...');
         const userId = currentUser.toLowerCase().replace(/\s+/g, '_');
         const oldKeys = [
@@ -563,6 +571,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             'qualishel-demands', 'qualishel-demand-counter', 'qualishel-people'
         ];
         oldKeys.forEach(key => {
+            // PROTEÇÃO ABSOLUTA: Nunca remover credenciais
+            if (key === 'qualishel_users' || key === 'qualishel_authenticated' || key === 'qualishel_current_user') {
+                console.log(`🔒 PROTEÇÃO ABSOLUTA: Credencial protegida - ${key}`);
+                return; // Pular esta chave completamente
+            }
+            
             // APENAS remover se a chave existir E não houver uma chave com userId correspondente
             // Isso garante que não removemos dados válidos do usuário atual
             const userSpecificKey = key.includes('-counter') 
